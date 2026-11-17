@@ -1,4 +1,3 @@
-import re
 import sys
 import struct
 import shutil
@@ -8,68 +7,12 @@ import subprocess
 LT = chr(60)
 GT = chr(62)
 
-PUBSPEC_VERIFICADO_17 = '''name: super_apk_sdui_universal
-description: Super-APK Universal 100% SDUI - Motor Agnostico Multi-Esquema, Multi-App, APIs & Gemini
-publish_to: 'none'
-version: 3.0.0+1
-
-environment:
-  sdk: ^3.5.0
-
-dependencies:
-  flutter:
-    sdk: flutter
-  http: ^1.2.2
-  path: ^1.9.0
-  crypto: ^3.0.6
-  latlong2: ^0.9.1
-  math_expressions: ^2.6.0
-  units_converter: ^3.0.2
-  confetti: ^0.8.0
-  flutter_riverpod: ^2.6.1
-  drag_and_drop_lists: ^0.4.2
-  pdf: ^3.11.1
-  ionicons: ^0.2.2
-  qr_flutter: ^4.1.0
-  expressions: ^0.2.5+2
-  uuid: ^4.5.1
-  fl_chart: ^0.69.0
-  table_calendar: ^3.1.2
-  screenshot: ^3.0.0
-
-dependency_overrides:
-  petitparser: ^6.0.2
-  intl: ^0.19.0
-  meta: ^1.15.0
-  collection: ^1.18.0
-  web: ^1.1.0
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-
-flutter:
-  uses-material-design: true
-  assets:
-    - logo.png
-'''
-
 def es_png_rgba_valido(data: bytes) -> bool:
     if len(data) >= 33 and data[:8] == b'\x89PNG\r\n\x1a\n':
         w, h = struct.unpack('>II', data[16:24])
         color_type = data[25]
         return 16 <= w <= 1024 and 16 <= h <= 1024 and color_type in (2, 6)
     return False
-
-def asegurar_logo_png_valido():
-    logo = pathlib.Path('logo.png')
-    if logo.exists() and es_png_rgba_valido(logo.read_bytes()):
-        return
-    res_dir = pathlib.Path('android/app/src/main/res')
-    for mip in res_dir.rglob('ic_launcher.png'):
-        if mip.exists() and es_png_rgba_valido(mip.read_bytes()):
-            shutil.copyfile(mip, logo)
-            return
 
 def inyectar_motor_nativo_en_main_activity():
     main_dir = pathlib.Path('android/app/src/main')
@@ -108,7 +51,7 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
             val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SuperApkSdui::WakeLockBolsillo")
             wakeLock?.acquire(30 * 60 * 1000L)
-        }} catch (_: Exception) {{}}
+        }} catch (e: Exception) {{}}
         tts = TextToSpeech(applicationContext, this)
     }}
 
@@ -150,7 +93,7 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
                 }}
             }}
             ToneGenerator(AudioManager.STREAM_ALARM, 85).startTone(ToneGenerator.TONE_PROP_BEEP, 130)
-        }} catch (_: Exception) {{}}
+        }} catch (e: Exception) {{}}
 
         if (!ttsListo) {{
             textoPendiente = texto
@@ -198,7 +141,7 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
             if (wakeLock?.isHeld == true) {{
                 wakeLock?.release()
             }}
-        }} catch (_: Exception) {{}}
+        }} catch (e: Exception) {{}}
         tts?.stop()
         tts?.shutdown()
         super.onDestroy()
@@ -208,16 +151,33 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
         kt.write_text(nuevo_kt, encoding='utf-8')
 
 def configurar_android():
-    asegurar_logo_png_valido()
     logo = pathlib.Path('logo.png')
     res_dir = pathlib.Path('android/app/src/main/res')
-    if logo.exists() and res_dir.exists() and es_png_rgba_valido(logo.read_bytes()):
-        for mipmap in res_dir.glob('mipmap-*'):
-            if mipmap.is_dir():
-                for nombre in ['ic_launcher.png', 'ic_launcher_round.png']:
-                    destino = mipmap / nombre
-                    if destino.exists() or nombre == 'ic_launcher.png':
-                        shutil.copyfile(logo, destino)
+    if res_dir.exists():
+        icono_limpio = pathlib.Path('/tmp/ic_launcher_clean.png')
+        convert_ok = False
+        if logo.exists():
+            try:
+                r = subprocess.run(['convert', 'logo.png', '-resize', '192x192', 'PNG32:/tmp/ic_launcher_clean.png'], capture_output=True)
+                if r.returncode == 0 and icono_limpio.exists():
+                    convert_ok = True
+                    shutil.copyfile(icono_limpio, logo)
+            except Exception:
+                pass
+
+        origen_icono = icono_limpio if convert_ok else (logo if (logo.exists() and es_png_rgba_valido(logo.read_bytes())) else None)
+        if origen_icono is not None:
+            for mipmap in res_dir.glob('mipmap-*'):
+                if mipmap.is_dir():
+                    for nombre in ['ic_launcher.png', 'ic_launcher_round.png']:
+                        destino = mipmap / nombre
+                        if destino.exists() or nombre == 'ic_launcher.png':
+                            shutil.copyfile(origen_icono, destino)
+        else:
+            for mip in res_dir.rglob('ic_launcher.png'):
+                if mip.exists():
+                    shutil.copyfile(mip, logo)
+                    break
 
     manifest = pathlib.Path('android/app/src/main/AndroidManifest.xml')
     if manifest.exists():
@@ -269,12 +229,10 @@ def configurar_android():
             gp.write_text(gtxt, encoding='utf-8')
 
 def resolver_pubspec():
-    pathlib.Path('pubspec.yaml').write_text(PUBSPEC_VERIFICADO_17, encoding='utf-8')
     subprocess.run(['flutter', 'pub', 'get'], check=True)
 
 def compilar_apk():
     configurar_android()
-    pathlib.Path('pubspec.yaml').write_text(PUBSPEC_VERIFICADO_17, encoding='utf-8')
     subprocess.run(['flutter', 'pub', 'get'], check=True)
     subprocess.run(['flutter', 'build', 'apk', '--release', '--no-tree-shake-icons'], check=True)
 
