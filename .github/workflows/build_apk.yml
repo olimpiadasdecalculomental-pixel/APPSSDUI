@@ -1,0 +1,45 @@
+name: Build Super-APK Universal SDUI
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-super-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout Codigo Fuente
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Flutter 3.27.4 (Dart 3.6)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: 'stable'
+          cache: true
+
+      - name: 4. Inicializar Estructura Android si falta
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create . --project-name super_apk_sdui_universal --platforms=android
+          fi
+
+      - name: 5. Configurar Permisos Android, Kotlin 2.1.0 y Compilar APK Release
+        run: |
+          python3 configurar_build.py android
+          python3 configurar_build.py pub
+          python3 configurar_build.py apk
+
+      - name: 6. Publicar Super-APK Descargable en GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: Super-APK-Universal-SDUI
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error

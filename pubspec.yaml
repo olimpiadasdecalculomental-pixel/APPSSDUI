@@ -1,0 +1,157 @@
+name: super_apk_sdui_universal
+description: Super-APK Universal 100% SDUI - Motor Agnostico Multi-Esquema, Multi-App, APIs & Gemini (110 Librerias)
+publish_to: 'none'
+version: 3.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # A. Motores SDUI, Backend Supabase y Cache Offline (11 librerias)
+  supabase_flutter: ^2.8.0
+  stac: ^0.7.0
+  json_dynamic_widget: ^7.0.6
+  hive_ce: ^2.6.0
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  sqflite: ^2.4.0
+  cached_network_image: ^3.4.1
+  flutter_riverpod: ^2.6.1
+
+  # B. Chat WeChat, Llamadas P2P, Notas de Voz, Drag & Drop y Voz Parlante (8 librerias)
+  drag_and_drop_lists: ^0.4.2
+  flutter_chat_ui: ^1.6.15
+  flutter_webrtc: ^0.12.1
+  record: ^5.1.2
+  just_audio: ^0.9.42
+  flutter_tts: ^4.1.0
+  audioplayers: ^6.1.0
+  share_plus: ^10.1.2
+
+  # C. Finanzas, Cripto Binance, WebSockets y Biometria (5 librerias)
+  fl_chart: ^0.69.0
+  web_socket_channel: ^3.0.1
+  crypto: ^3.0.6
+  flutter_secure_storage: ^9.2.2
+  local_auth: ^2.3.0
+
+  # D. Codigos QR Reales, Camara, PDF, YouTube y Multimedia (12 librerias)
+  mobile_scanner: ^6.0.2
+  qr_flutter: ^4.1.0
+  camera: ^0.11.0+2
+  image_picker: ^1.1.2
+  pdfrx: ^1.0.92
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  video_player: ^2.9.2
+  chewie: ^1.8.5
+  youtube_player_flutter: ^9.1.1
+  webview_flutter: ^4.10.0
+  url_launcher: ^6.3.1
+
+  # E. Juegos 2D, Fisica Box2D, Modelos 3D AR y Realidad Virtual 360 (6 librerias)
+  flame: ^1.21.0
+  forge2d: ^0.13.1
+  model_viewer_plus: ^1.8.1
+  video_360: ^0.0.8
+  confetti: ^0.8.0
+  flutter_animate: ^4.5.0
+
+  # F. Hardware, IoT Arduino, Bluetooth BLE, WiFi, Mapas GPS Uber y 4DX (9 librerias)
+  mqtt_client: ^10.5.1
+  flutter_blue_plus: ^1.34.5
+  wifi_iot: ^0.3.19
+  vibration: ^2.0.1
+  geolocator: ^13.0.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  sensors_plus: ^6.1.0
+  connectivity_plus: ^6.1.0
+
+  # G. Matematicas, Calculo, Dibujo e Inteligencia Artificial Gemini (11 librerias)
+  flutter_math_fork: ^0.7.3
+  math_expressions: ^2.6.0
+  equations: ^5.0.2
+  units_converter: ^3.0.2
+  expressions: ^0.2.5+2
+  flutter_drawing_board: ^0.9.5
+  flutter_svg: ^2.0.14
+  google_generative_ai: ^0.4.6
+  flutter_gemma: ^0.4.0
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+
+  # H. Diseno Visual, Mini-Apps WeChat en Vivo y Listas Masivas 10,000M (26 librerias)
+  google_fonts: ^6.2.1
+  lucide_icons_flutter: ^1.2.5
+  ionicons: ^0.2.2
+  dotted_border: ^2.1.0
+  shimmer: ^3.0.0
+  faker: ^2.2.0
+  graphview: ^1.2.0
+  flutter_markdown: ^0.7.4+1
+  flutter_highlight: ^0.7.0
+  highlight: ^0.7.0
+  json_path: ^0.7.4
+  diff_match_patch: ^0.4.1
+  csv: ^6.0.0
+  archive: ^3.6.1
+  device_info_plus: ^11.1.1
+  infinite_scroll_pagination: ^4.1.0
+  flutter_staggered_grid_view: ^0.7.0
+  awesome_dialog: ^3.2.1
+  toastification: ^2.3.0
+  data_table_2: ^2.5.15
+  animated_tree_view: ^2.3.0
+  dropdown_button2: ^2.3.9
+  dart_eval: ^0.7.9
+  json_schema: ^5.2.0
+  uuid: ^4.5.1
+  wakelock_plus: ^1.2.8
+
+  # I. Negocio: Stripe, Push, POS Termico 80mm, OCR, Voz, Archivos, Calendario (11 librerias)
+  flutter_stripe: ^11.1.0
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.3
+  print_bluetooth_thermal: ^1.1.6
+  google_mlkit_text_recognition: ^0.14.0
+  speech_to_text: ^7.0.0
+  file_picker: ^8.1.3
+  table_calendar: ^3.1.2
+  syncfusion_flutter_charts: ^27.1.58
+  screenshot: ^3.0.0
+  permission_handler: ^11.3.1
+
+  # J. Segundo Plano, Bolsillo, Frecuencia Hz (Pitch) y Wearables Smartwatch (11 librerias)
+  flutter_background_service: ^5.0.10
+  android_alarm_manager_plus: ^4.0.6
+  workmanager: ^0.5.2
+  lottie: ^3.1.3
+  audio_session: ^0.1.21
+  battery_plus: ^6.2.1
+  pedometer: ^4.0.2
+  flutter_ringtone_player: ^4.0.0+3
+  pitch_detector_dart: ^0.0.5
+  health: ^11.1.0
+  watch_connectivity: ^0.2.1
+
+dependency_overrides:
+  petitparser: ^6.0.2
+  intl: ^0.19.0
+  meta: ^1.15.0
+  collection: ^1.18.0
+  web: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - logo.png
