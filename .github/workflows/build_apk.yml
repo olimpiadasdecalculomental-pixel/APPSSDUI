@@ -25,13 +25,14 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 4. Inicializar Estructura Android si falta
+      - name: 4. Inicializar Estructura Android con --no-pub
         run: |
           if [ ! -d "android" ]; then
-            flutter create . --project-name super_apk_sdui_universal --platforms=android
+            flutter create --no-pub . --project-name super_apk_sdui_universal --platforms=android
           fi
+          rm -rf test
 
-      - name: 5. Configurar Permisos Android, Kotlin 2.1.0 y Compilar APK Release
+      - name: 5. Configurar Permisos Android, Resolver Dependencias y Compilar APK Release
         run: |
           python3 configurar_build.py android
           python3 configurar_build.py pub

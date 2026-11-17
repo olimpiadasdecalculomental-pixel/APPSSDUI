@@ -1,10 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:expressions/expressions.dart' as expr_pkg;
 import 'package:math_expressions/math_expressions.dart' as math_exp;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'estado_global.dart';
 import 'puente_supabase.dart';
 import '../motores/bus_hardware_universal.dart';
@@ -174,8 +174,8 @@ class EjecutorFlujosSdui {
 
       if (accion == 'EXPORTAR_PDF') {
         final String tituloPdf = paso['titulo']?.toString() ?? 'Reporte Oficial Super-APK SDUI';
-        await generarYCompartirPdf(titulo: tituloPdf, datos: paso);
-        onFeedback?.call('PDF generado: $tituloPdf');
+        final String rutaPdf = await generarPdfNativo(titulo: tituloPdf, datos: paso);
+        onFeedback?.call('PDF generado: $rutaPdf');
         continue;
       }
 
@@ -275,7 +275,7 @@ class EjecutorFlujosSdui {
     return res == true;
   }
 
-  static Future<void> generarYCompartirPdf({
+  static Future<String> generarPdfNativo({
     required String titulo,
     required Map<String, dynamic> datos,
   }) async {
@@ -321,6 +321,9 @@ class EjecutorFlujosSdui {
         },
       ),
     );
-    await Printing.sharePdf(bytes: await doc.save(), filename: 'reporte_sdui.pdf');
+    final bytes = await doc.save();
+    final f = File('${Directory.systemTemp.path}/reporte_sdui_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await f.writeAsBytes(bytes);
+    return '${f.path} (${(bytes.length / 1024).toStringAsFixed(1)} KB)';
   }
 }

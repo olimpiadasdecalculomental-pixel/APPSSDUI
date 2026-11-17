@@ -1,17 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:hive_ce/hive.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:crypto/crypto.dart' as crypto_pkg;
 import 'estado_global.dart';
 
 class PuenteSupabaseSdui {
   static const String _defaultUrl = 'https://alxbydjpoxoavasklwpd.supabase.co';
   static const String _defaultAnonKey = 'sb_publishable_Kc8wekwUqIs78ILNF-j-Qg_LNMYRhn0';
-
-  static const FlutterSecureStorage _bovedaSegura = FlutterSecureStorage();
-  static Box? _cajaHiveCache;
 
   static String supabaseUrl = _defaultUrl;
   static String supabaseAnonKey = _defaultAnonKey;
@@ -19,34 +15,35 @@ class PuenteSupabaseSdui {
   static String appIdActivo = 'APP_UNIVERSAL_SDUI';
   static String geminiApiKey = '';
 
+  static File _archivoConfigSegura() {
+    return File('${Directory.systemTemp.path}/sdui_boveda_contexto_v3.json');
+  }
+
+  static File _archivoCacheHive(String esq, String app) {
+    final hashKey = crypto_pkg.md5.convert(utf8.encode('${esq}_$app')).toString();
+    return File('${Directory.systemTemp.path}/sdui_hive_cache_$hashKey.json');
+  }
+
   static Future<void> inicializarPuenteUniversal() async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      Hive.init(dir.path);
-      _cajaHiveCache = await Hive.openBox('sdui_universal_cache_v3');
-    } catch (_) {}
-
-    try {
-      final esqGuardado = await _bovedaSegura.read(key: 'sdui_esquema_activo');
-      final appGuardada = await _bovedaSegura.read(key: 'sdui_app_id_activo');
-      final urlGuardada = await _bovedaSegura.read(key: 'sdui_supabase_url');
-      final keyGuardada = await _bovedaSegura.read(key: 'sdui_supabase_key');
-      final gemGuardada = await _bovedaSegura.read(key: 'sdui_gemini_key');
-
-      if (esqGuardado != null && esqGuardado.trim().isNotEmpty) {
-        esquemaActivo = esqGuardado.trim();
-      }
-      if (appGuardada != null && appGuardada.trim().isNotEmpty) {
-        appIdActivo = appGuardada.trim();
-      }
-      if (urlGuardada != null && urlGuardada.trim().isNotEmpty) {
-        supabaseUrl = urlGuardada.trim();
-      }
-      if (keyGuardada != null && keyGuardada.trim().isNotEmpty) {
-        supabaseAnonKey = keyGuardada.trim();
-      }
-      if (gemGuardada != null && gemGuardada.trim().isNotEmpty) {
-        geminiApiKey = gemGuardada.trim();
+      final f = _archivoConfigSegura();
+      if (await f.exists()) {
+        final Map data = jsonDecode(await f.readAsString()) as Map;
+        if (data['esquema_activo'] != null && data['esquema_activo'].toString().trim().isNotEmpty) {
+          esquemaActivo = data['esquema_activo'].toString().trim();
+        }
+        if (data['app_id_activo'] != null && data['app_id_activo'].toString().trim().isNotEmpty) {
+          appIdActivo = data['app_id_activo'].toString().trim();
+        }
+        if (data['supabase_url'] != null && data['supabase_url'].toString().trim().isNotEmpty) {
+          supabaseUrl = data['supabase_url'].toString().trim();
+        }
+        if (data['supabase_key'] != null && data['supabase_key'].toString().trim().isNotEmpty) {
+          supabaseAnonKey = data['supabase_key'].toString().trim();
+        }
+        if (data['gemini_key'] != null && data['gemini_key'].toString().trim().isNotEmpty) {
+          geminiApiKey = data['gemini_key'].toString().trim();
+        }
       }
     } catch (_) {}
 
@@ -68,17 +65,14 @@ class PuenteSupabaseSdui {
     if (nuevaGeminiKey != null && nuevaGeminiKey.trim().isNotEmpty) geminiApiKey = nuevaGeminiKey.trim();
 
     try {
-      await _bovedaSegura.write(key: 'sdui_esquema_activo', value: esquemaActivo);
-      await _bovedaSegura.write(key: 'sdui_app_id_activo', value: appIdActivo);
-      if (nuevaUrl != null && nuevaUrl.isNotEmpty) {
-        await _bovedaSegura.write(key: 'sdui_supabase_url', value: supabaseUrl);
-      }
-      if (nuevaAnonKey != null && nuevaAnonKey.isNotEmpty) {
-        await _bovedaSegura.write(key: 'sdui_supabase_key', value: supabaseAnonKey);
-      }
-      if (nuevaGeminiKey != null && nuevaGeminiKey.isNotEmpty) {
-        await _bovedaSegura.write(key: 'sdui_gemini_key', value: geminiApiKey);
-      }
+      final f = _archivoConfigSegura();
+      await f.writeAsString(jsonEncode({
+        'esquema_activo': esquemaActivo,
+        'app_id_activo': appIdActivo,
+        'supabase_url': supabaseUrl,
+        'supabase_key': supabaseAnonKey,
+        'gemini_key': geminiApiKey,
+      }));
     } catch (_) {}
 
     EstadoGlobalSdui.instancia.escribirRuta('sistema.esquema_activo', esquemaActivo, notificar: false);
@@ -115,6 +109,7 @@ class PuenteSupabaseSdui {
 
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         EstadoGlobalSdui.instancia.escribirRuta('sistema.modo_offline', false, notificar: false);
+        if (resp.body.isEmpty) return {'exito': true};
         final decoded = jsonDecode(resp.body);
         if (decoded is Map<String, dynamic>) {
           return decoded;
@@ -131,7 +126,7 @@ class PuenteSupabaseSdui {
       return {
         'exito': false,
         'modo_offline': true,
-        'mensaje': 'Modo Offline activo (Cache Hive): $e',
+        'mensaje': 'Modo Offline activo (Cache Local): $e',
       };
     }
   }
@@ -142,10 +137,22 @@ class PuenteSupabaseSdui {
   }) async {
     final String appObj = appOverride ?? appIdActivo;
     final String esqObj = esquemaOverride ?? esquemaActivo;
-    final String claveHash = 'hash_${esqObj}_$appObj';
-    final String clavePantallas = 'pantallas_${esqObj}_$appObj';
+    final File fCache = _archivoCacheHive(esqObj, appObj);
 
-    final String hashLocal = _cajaHiveCache?.get(claveHash)?.toString() ?? '';
+    String hashLocal = '';
+    List> pantallasCacheadas = [];
+
+    try {
+      if (await fCache.exists()) {
+        final Map cacheObj = jsonDecode(await fCache.readAsString()) as Map;
+        hashLocal = cacheObj['version_hash']?.toString() ?? '';
+        if (cacheObj['pantallas'] is List) {
+          pantallasCacheadas = (cacheObj['pantallas'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+      }
+    } catch (_) {}
 
     final res = await llamarRpcNano(
       'nano_leer_pantalla',
@@ -158,33 +165,27 @@ class PuenteSupabaseSdui {
     );
 
     if (res['exito'] == true) {
-      if (res['sin_cambios'] == true && _cajaHiveCache != null) {
-        final guardado = _cajaHiveCache?.get(clavePantallas);
-        if (guardado is String && guardado.isNotEmpty) {
-          final List listaDec = jsonDecode(guardado) as List;
-          return listaDec.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        }
+      if (res['sin_cambios'] == true && pantallasCacheadas.isNotEmpty) {
+        return pantallasCacheadas;
       }
 
-      if (res['pantallas'] is List) {
+      if (res['pantallas'] is List && (res['pantallas'] as List).isNotEmpty) {
         final List listaRemota = res['pantallas'] as List;
         final List> pantallasTipadas =
             listaRemota.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         final String nuevoHash = res['version_hash']?.toString() ?? '';
         try {
-          await _cajaHiveCache?.put(claveHash, nuevoHash);
-          await _cajaHiveCache?.put(clavePantallas, jsonEncode(pantallasTipadas));
+          await fCache.writeAsString(jsonEncode({
+            'version_hash': nuevoHash,
+            'pantallas': pantallasTipadas,
+          }));
         } catch (_) {}
         return pantallasTipadas;
       }
     }
 
-    if (_cajaHiveCache != null) {
-      final respaldo = _cajaHiveCache?.get(clavePantallas);
-      if (respaldo is String && respaldo.isNotEmpty) {
-        final List listaRes = jsonDecode(respaldo) as List;
-        return listaRes.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      }
+    if (pantallasCacheadas.isNotEmpty) {
+      return pantallasCacheadas;
     }
 
     return _semillaLocalEmergencia();
@@ -207,18 +208,40 @@ class PuenteSupabaseSdui {
 
     if (geminiApiKey.isNotEmpty && promptUsuario.isNotEmpty) {
       try {
-        final model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: geminiApiKey);
-        final response = await model.generateContent([Content.text(promptUsuario)]);
-        final textoIa = response.text ?? 'Respuesta generada por Gemini.';
-        EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', textoIa);
-        return {'exito': true, 'respuesta_ia': textoIa, 'meta_rpc': meta};
+        final uriGem = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
+        );
+        final rGem = await http
+            .post(
+              uriGem,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'contents': [
+                  {
+                    'parts': [
+                      {'text': promptUsuario}
+                    ]
+                  }
+                ]
+              }),
+            )
+            .timeout(const Duration(seconds: 12));
+        if (rGem.statusCode == 200) {
+          final dec = jsonDecode(rGem.body) as Map;
+          final textoIa = dec['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ??
+              'Respuesta generada por Gemini.';
+          EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', textoIa);
+          return {'exito': true, 'respuesta_ia': textoIa, 'meta_rpc': meta};
+        }
       } catch (e) {
-        EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', 'Error Gemini: $e');
+        EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', 'Error Gemini REST: $e');
       }
     }
 
-    final String endpointExterno = payload['endpoint_url']?.toString() ?? meta['endpoint_url']?.toString() ?? '';
-    if (endpointExterno.startsWith('http') && !endpointExterno.contains('generativelanguage.googleapis.com')) {
+    final String endpointExterno =
+        payload['endpoint_url']?.toString() ?? meta['endpoint_url']?.toString() ?? '';
+    if (endpointExterno.startsWith('http') &&
+        !endpointExterno.contains('generativelanguage.googleapis.com')) {
       try {
         final rExt = await http
             .post(
@@ -235,7 +258,7 @@ class PuenteSupabaseSdui {
     }
 
     final String resumen = meta['mensaje']?.toString() ??
-        'Puente API/Gemini listo. Configura tu API Key o revisa colecciones_datos.';
+        'Puente API/Gemini ejecutado en esquema [$esquemaActivo].';
     EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', resumen);
     return {'exito': true, 'mensaje': resumen, 'meta': meta};
   }
@@ -260,33 +283,15 @@ class PuenteSupabaseSdui {
               'children': [
                 {
                   'type': 'input',
-                  'campo': 'supabase_url',
-                  'label': 'URL Proyecto Supabase:',
-                  'placeholder': 'https://tu-proyecto.supabase.co'
-                },
-                {
-                  'type': 'input',
-                  'campo': 'supabase_key',
-                  'label': 'Anon Key Supabase:',
-                  'placeholder': 'sb_publishable_...'
-                },
-                {
-                  'type': 'input',
                   'campo': 'nuevo_esquema',
-                  'label': 'Esquema Activo (esquema1, esquema2, etc.):',
+                  'label': 'Cambiar Esquema PostgreSQL (esquema1, esquema2):',
                   'placeholder': 'esquema1'
                 },
                 {
                   'type': 'input',
                   'campo': 'nueva_app_id',
-                  'label': 'App ID Activa:',
+                  'label': 'Cambiar App ID Activa:',
                   'placeholder': 'APP_UNIVERSAL_SDUI'
-                },
-                {
-                  'type': 'input',
-                  'campo': 'gemini_key',
-                  'label': 'API Key de Gemini IA (Opcional):',
-                  'placeholder': 'AIza...'
                 },
                 {
                   'type': 'button',
@@ -296,10 +301,7 @@ class PuenteSupabaseSdui {
                     {
                       'accion': 'CAMBIAR_CONTEXTO_MULTI_APP',
                       'esquema': '{{form.nuevo_esquema}}',
-                      'app_id': '{{form.nueva_app_id}}',
-                      'url': '{{form.supabase_url}}',
-                      'anon_key': '{{form.supabase_key}}',
-                      'gemini_key': '{{form.gemini_key}}'
+                      'app_id': '{{form.nueva_app_id}}'
                     }
                   ]
                 }
