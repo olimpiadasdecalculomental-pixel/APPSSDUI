@@ -74,7 +74,7 @@ class _MotoresJuegosCognitivosState extends State
     _fisicaCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
-    )..repeat();
+    );
     _inicializarParametrosDesdeJson();
     EstadoGlobalSdui.instancia.registrarListenerCicloVida(_alCambiarCicloVidaApp);
   }
@@ -443,7 +443,7 @@ class _MotoresJuegosCognitivosState extends State
                   selected: sel,
                   selectedColor: const Color(0xFF00FF66),
                   backgroundColor: const Color(0xFF142033),
-                  onSelected: (_) => setState(() => _subModoMatriz = m['k']!),
+                  onSelected: (_) { setState(() => _subModoMatriz = m['k']!); if (_subModoMatriz == 'ALPHA_RAIN_2D') { _fisicaCtrl.repeat(); } else { _fisicaCtrl.stop(); } },
                 ),
               );
             }).toList(),

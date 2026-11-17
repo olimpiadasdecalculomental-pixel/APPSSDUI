@@ -58,7 +58,7 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
     override fun onInit(status: Int) {{
         if (status == TextToSpeech.SUCCESS) {{
             val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
             tts?.setAudioAttributes(attrs)
@@ -85,14 +85,14 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
             if (am != null) {{
                 val maxMusic = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                 if (am.getStreamVolume(AudioManager.STREAM_MUSIC) <= 1) {{
-                    am.setStreamVolume(AudioManager.STREAM_MUSIC, (maxMusic * 0.75).toInt(), 0)
+                    // Volumen libre controlado por botones fisicos
                 }}
                 val maxAlarm = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
                 if (am.getStreamVolume(AudioManager.STREAM_ALARM) <= 1) {{
-                    am.setStreamVolume(AudioManager.STREAM_ALARM, (maxAlarm * 0.80).toInt(), 0)
+                    // Sin forzar volumen de alarma
                 }}
             }}
-            ToneGenerator(AudioManager.STREAM_ALARM, 85).startTone(ToneGenerator.TONE_PROP_BEEP, 130)
+            // Sin pitido de alarma
         }} catch (e: Exception) {{}}
 
         if (!ttsListo) {{

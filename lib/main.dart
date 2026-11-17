@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'nucleo/estado_global.dart';
 import 'nucleo/puente_supabase.dart';
 import 'motores/renderizador_atomico.dart';
 
@@ -38,18 +37,13 @@ class SuperApkUniversalSduiApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: EstadoGlobalSdui.instancia,
-      builder: (context, _) {
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'Super-APK Universal 100% SDUI',
-          theme: ThemeData.dark().copyWith(
-            scaffoldBackgroundColor: const Color(0xFF050814),
-          ),
-          home: const LienzoUniversalSdui(),
-        );
-      },
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Super-APK Universal 100% SDUI',
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF050814),
+      ),
+      home: const LienzoUniversalSdui(),
     );
   }
 }

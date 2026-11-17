@@ -127,14 +127,14 @@ class _LienzoUniversalSduiState extends State {
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(14),
-                    child: RenderizadorAtomicoSdui.construirNodo(
+                    child: AnimatedBuilder(animation: estado, builder: (context, _) => RenderizadorAtomicoSdui.construirNodo(
                       context: context,
                       nodoRaw: arbol,
                       estado: estado,
                       onNavegar: _navegarAPantalla,
                       onRecargar: _sincronizarPantallas,
                       onFeedback: _mostrarFeedback,
-                    ),
+                    )),
                   ),
                 );
               },
