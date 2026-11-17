@@ -59,15 +59,30 @@ class BusHardwareUniversal {
     required String comando,
     required Map argumentos,
   }) async {
+    verificar17PaquetesCompilados();
     final String cmd = comando.toUpperCase().trim();
     final estado = EstadoGlobalSdui.instancia;
 
+    if (cmd == 'SILENCIAR_TTS' || cmd == 'DETENER_TTS') {
+      try {
+        await _canalTtsNativo.invokeMethod('stop');
+      } catch (_) {}
+      return {'exito': true, 'comando': cmd, 'mensaje': 'Voz detenida.'};
+    }
+
     if (cmd == 'HABLAR_TTS') {
-      final String texto = argumentos['texto']?.toString() ?? 'Comando de voz ejecutado.';
+      if (argumentos['silenciar'] == true) {
+        return {'exito': true, 'comando': cmd, 'mensaje': 'TTS en modo silencioso.'};
+      }
+      final String texto = estado.interpolarTexto(
+        argumentos['texto']?.toString() ?? '',
+      );
+      if (texto.isEmpty) {
+        return {'exito': true, 'comando': cmd, 'mensaje': 'Texto vacio.'};
+      }
       final double pitch = double.tryParse(argumentos['pitch']?.toString() ?? '1.0') ?? 1.0;
       final double rate = double.tryParse(argumentos['rate']?.toString() ?? '0.95') ?? 0.95;
-      HapticFeedback.mediumImpact();
-      SystemSound.play(SystemSoundType.click);
+      HapticFeedback.selectionClick();
       try {
         await _canalTtsNativo.invokeMethod('speak', {
           'text': texto,
@@ -75,7 +90,7 @@ class BusHardwareUniversal {
           'rate': rate < 0.7 ? 0.95 : rate,
         });
       } catch (_) {}
-      return {'exito': true, 'comando': cmd, 'mensaje': 'Voz emitida: $texto'};
+      return {'exito': true, 'comando': cmd, 'mensaje': 'Voz: $texto'};
     }
 
     if (cmd == 'DETECTAR_TONO_HZ') {
@@ -92,7 +107,9 @@ class BusHardwareUniversal {
           : (hzDetectados < 380.0 ? 'Tono Medio (Voz Natural)' : 'Tono Agudo (Soprano / Silbido)');
 
       final double hzRedondeado = double.parse(hzDetectados.toStringAsFixed(1));
-      estado.escribirRuta('hardware.frecuencia_hz', hzRedondeado);
+      final String rutaGuardar = argumentos['guardar_en']?.toString() ?? 'hardware.frecuencia_hz';
+      estado.escribirRuta(rutaGuardar, hzRedondeado, notificar: false);
+      estado.escribirRuta('hardware.clasificacion_tono', clasificacion, notificar: true);
       return {
         'exito': true,
         'frecuencia_hz': hzRedondeado,
@@ -124,18 +141,27 @@ class BusHardwareUniversal {
     }
 
     if (cmd == 'OBTENER_GPS') {
-      const LatLng puntoA = LatLng(-17.9647, -67.1060);
-      const LatLng puntoB = LatLng(-17.7833, -63.1821);
+      final double latA =
+          double.tryParse(argumentos['lat_origen']?.toString() ?? '-17.9647') ?? -17.9647;
+      final double lngA =
+          double.tryParse(argumentos['lng_origen']?.toString() ?? '-67.1060') ?? -67.1060;
+      final double latB =
+          double.tryParse(argumentos['lat_destino']?.toString() ?? '-17.7833') ?? -17.7833;
+      final double lngB =
+          double.tryParse(argumentos['lng_destino']?.toString() ?? '-63.1821') ?? -63.1821;
+      final LatLng puntoA = LatLng(latA, lngA);
+      final LatLng puntoB = LatLng(latB, lngB);
       const Distance calc = Distance();
       final double km = calc.as(LengthUnit.Kilometer, puntoA, puntoB);
       estado.escribirRuta('hardware.gps_lat', puntoA.latitude, notificar: false);
-      estado.escribirRuta('hardware.gps_lng', puntoA.longitude, notificar: true);
+      estado.escribirRuta('hardware.gps_lng', puntoA.longitude, notificar: false);
+      estado.escribirRuta('hardware.gps_distancia_km', km, notificar: true);
       return {
         'exito': true,
         'lat': puntoA.latitude,
         'lng': puntoA.longitude,
         'distancia_km': km,
-        'mensaje': 'GPS Activo: ${puntoA.latitude}, ${puntoA.longitude} (Rango $km km)',
+        'mensaje': 'GPS: ${puntoA.latitude}, ${puntoA.longitude} ($km km)',
       };
     }
 
@@ -156,291 +182,221 @@ class BusHardwareUniversal {
     return {
       'exito': true,
       'comando': cmd,
-      'mensaje': 'Bus Hardware [$cmd] ejecutado y auditado en Supabase.',
+      'mensaje': 'Hardware [$cmd] ejecutado y auditado en Supabase.',
     };
   }
 }
 
-class BusHardwareUniversalWidget extends StatefulWidget {
-  final Map configJson;
+class SduiQrViewAtomico extends StatefulWidget {
+  final Map nodoRaw;
   final void Function(String) onFeedback;
 
-  const BusHardwareUniversalWidget({
+  const SduiQrViewAtomico({
     super.key,
-    required this.configJson,
+    required this.nodoRaw,
     required this.onFeedback,
   });
 
   @override
-  State createState() => _BusHardwareUniversalWidgetState();
+  State createState() => _SduiQrViewAtomicoState();
 }
 
-class _BusHardwareUniversalWidgetState extends State {
-  String _moduloActivo = 'QR_Y_ESCANER';
-  bool _escanerAbierto = false;
-  final String _dataQr = 'SDUI-UNIVERSAL-TOKEN-2026';
-  double _rotacion3d = 0.0;
-  DateTime _diaCalendario = DateTime.now();
+class _SduiQrViewAtomicoState extends State {
   final ScreenshotController _shotCtrl = ScreenshotController();
 
-  Future _capturarQrPng() async {
-    final w = widget as BusHardwareUniversalWidget;
+  Future _capturarPng() async {
+    final w = widget as SduiQrViewAtomico;
     try {
       final Uint8List? bytes = await _shotCtrl.capture();
       if (bytes != null) {
-        w.onFeedback('Captura PNG generada (${(bytes.lengthInBytes / 1024).toStringAsFixed(1)} KB)');
+        final double kb = bytes.lengthInBytes / 1024.0;
+        EstadoGlobalSdui.instancia.escribirRuta(
+          w.nodoRaw['guardar_en']?.toString() ?? 'hardware.ultimo_qr_kb',
+          kb.toStringAsFixed(1),
+        );
+        w.onFeedback('QR PNG capturado (${kb.toStringAsFixed(1)} KB)');
       }
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    BusHardwareUniversal.verificar17PaquetesCompilados();
-    final w = widget as BusHardwareUniversalWidget;
+    final w = widget as SduiQrViewAtomico;
     final estado = EstadoGlobalSdui.instancia;
-    final String titulo =
-        w.configJson['titulo']?.toString() ?? 'BUS DE HARDWARE UNIVERSAL Y WEARABLES';
+    final String dataQr = estado.interpolarTexto(
+      w.nodoRaw['data']?.toString() ?? w.nodoRaw['valor']?.toString() ?? 'SDUI-QR',
+    );
+    final double tamano =
+        double.tryParse(w.nodoRaw['size']?.toString() ?? '150') ?? 150.0;
+    final bool mostrarBotonPng = w.nodoRaw['mostrar_boton_png'] != false;
+    final String txtBtnPng = estado.interpolarTexto(
+      w.nodoRaw['texto_boton_png']?.toString() ?? 'CAPTURAR PNG',
+    );
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF0B132B),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF00F3FF), width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF00F3FF)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Screenshot(
+            controller: _shotCtrl,
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: QrImageView(
+                data: dataQr.isEmpty ? 'SDUI-QR' : dataQr,
+                version: QrVersions.auto,
+                size: tamano,
+              ),
+            ),
+          ),
+          if (mostrarBotonPng) ...[
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00FF66),
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.camera_alt, size: 16),
+              label: Text(
+                txtBtnPng,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+              onPressed: _capturarPng,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class SduiCalendarioAtomico extends StatefulWidget {
+  final Map nodoRaw;
+  final void Function(String) onFeedback;
+
+  const SduiCalendarioAtomico({
+    super.key,
+    required this.nodoRaw,
+    required this.onFeedback,
+  });
+
+  @override
+  State createState() => _SduiCalendarioAtomicoState();
+}
+
+class _SduiCalendarioAtomicoState extends State {
+  DateTime _diaSeleccionado = DateTime.now();
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget as SduiCalendarioAtomico;
+    final String rutaGuardar =
+        w.nodoRaw['guardar_en']?.toString() ?? 'hardware.fecha_seleccionada';
+    final bool formatoMes =
+        (w.nodoRaw['formato']?.toString() ?? 'week').toLowerCase() == 'month';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B132B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFD700)),
+      ),
+      child: TableCalendar(
+        firstDay: DateTime.utc(2020, 1, 1),
+        lastDay: DateTime.utc(2035, 12, 31),
+        focusedDay: _diaSeleccionado,
+        calendarFormat: formatoMes ? CalendarFormat.month : CalendarFormat.week,
+        selectedDayPredicate: (d) => isSameDay(_diaSeleccionado, d),
+        onDaySelected: (sel, foc) {
+          setState(() => _diaSeleccionado = sel);
+          final String fechaIso = sel.toIso8601String().split('T').first;
+          EstadoGlobalSdui.instancia.escribirRuta(rutaGuardar, fechaIso);
+          w.onFeedback('Fecha: $fechaIso');
+        },
+      ),
+    );
+  }
+}
+
+class SduiCubo3dAtomico extends StatefulWidget {
+  final Map nodoRaw;
+
+  const SduiCubo3dAtomico({
+    super.key,
+    required this.nodoRaw,
+  });
+
+  @override
+  State createState() => _SduiCubo3dAtomicoState();
+}
+
+class _SduiCubo3dAtomicoState extends State {
+  double _rotacionY = 0.0;
+
+  static Color _hexColor(String? hex, Color def) {
+    if (hex == null || hex.trim().isEmpty) return def;
+    String limpio = hex.replaceAll('#', '').trim();
+    if (limpio.length == 6) limpio = 'FF$limpio';
+    final int? val = int.tryParse(limpio, radix: 16);
+    return val != null ? Color(val) : def;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget as SduiCubo3dAtomico;
+    final estado = EstadoGlobalSdui.instancia;
+    final String texto = estado.interpolarTexto(
+      w.nodoRaw['texto']?.toString() ?? 'OBJETO 3D SDUI',
+    );
+    final Color col = _hexColor(w.nodoRaw['color']?.toString(), const Color(0xFF00FF66));
+    final double altura =
+        double.tryParse(w.nodoRaw['altura']?.toString() ?? '110') ?? 110.0;
+
+    return GestureDetector(
+      onHorizontalDragUpdate: (d) => setState(() => _rotacionY += d.delta.dx * 0.025),
+      child: Container(
+        height: altura,
+        margin: const EdgeInsets.only(bottom: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFF050B18),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: col, width: 1.5),
+        ),
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0015)
+            ..rotateY(_rotacionY),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Ionicons.hardware_chip_outline, color: Color(0xFF00FF66), size: 18),
-              const SizedBox(width: 8),
-              Expanded(
+              Icon(Ionicons.cube_outline, color: col, size: 34),
+              const SizedBox(width: 10),
+              Flexible(
                 child: Text(
-                  titulo,
-                  style: const TextStyle(color: Color(0xFF00F3FF), fontSize: 13, fontWeight: FontWeight.w900),
+                  texto,
+                  style: TextStyle(
+                    color: col,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                {'k': 'QR_Y_ESCANER', 't': '1. QR & Captura PNG'},
-                {'k': 'WEARABLES_SALUD', 't': '2. Smartwatch & Tono Hz'},
-                {'k': 'GPS_3D_CALENDARIO', 't': '3. GPS, 3D AR & Calendario'},
-                {'k': 'POS_STRIPE_OCR_IOT', 't': '4. POS 80mm, Stripe, OCR & IoT'},
-              ].map((m) {
-                final bool sel = _moduloActivo == m['k'];
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(
-                      m['t']!,
-                      style: TextStyle(
-                        color: sel ? Colors.black : Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    selected: sel,
-                    selectedColor: const Color(0xFF00FF66),
-                    backgroundColor: const Color(0xFF142033),
-                    onSelected: (_) => setState(() => _moduloActivo = m['k']!),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (_moduloActivo == 'QR_Y_ESCANER') ...[
-            Center(
-              child: Screenshot(
-                controller: _shotCtrl,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: QrImageView(
-                    data: _dataQr,
-                    version: QrVersions.auto,
-                    size: 145,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00F3FF),
-                      foregroundColor: Colors.black,
-                    ),
-                    icon: Icon(_escanerAbierto ? Icons.stop : Icons.qr_code_scanner, size: 18),
-                    label: Text(
-                      _escanerAbierto ? 'CERRAR MIRA' : 'ESCANEAR QR',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900),
-                    ),
-                    onPressed: () {
-                      setState(() => _escanerAbierto = !_escanerAbierto);
-                      if (_escanerAbierto) {
-                        estado.escribirRuta('hardware.ultimo_qr', _dataQr);
-                        w.onFeedback('Mira optica QR activa: $_dataQr');
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00FF66),
-                      foregroundColor: Colors.black,
-                    ),
-                    icon: const Icon(Icons.camera_alt, size: 18),
-                    label: const Text('CAPTURAR PNG', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
-                    onPressed: _capturarQrPng,
-                  ),
-                ),
-              ],
-            ),
-          ],
-          if (_moduloActivo == 'WEARABLES_SALUD') ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF050B18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF00FF66)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    'Pasos Smartwatch: ${estado.leerRuta("hardware.pasos_smartwatch")} · Ritmo: ${estado.leerRuta("hardware.bpm_cardiaco")} BPM',
-                    style: const TextStyle(color: Color(0xFF00FF66), fontSize: 13, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Frecuencia Vocal Detectada: ${estado.leerRuta("hardware.frecuencia_hz")} Hz',
-                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11.5),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00FF66), foregroundColor: Colors.black),
-                    icon: const Icon(Icons.watch, size: 16),
-                    label: const Text('SYNC SMARTWATCH', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
-                    onPressed: () async {
-                      final Map r = await BusHardwareUniversal.ejecutarComandoHardware(
-                        comando: 'SINCRONIZAR_SMARTWATCH',
-                        argumentos: {},
-                      );
-                      setState(() {});
-                      w.onFeedback(r['mensaje']?.toString() ?? 'Sync OK');
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00F3FF), foregroundColor: Colors.black),
-                    icon: const Icon(Icons.mic, size: 16),
-                    label: const Text('DETECTAR HZ (528 Hz)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
-                    onPressed: () async {
-                      final Map r = await BusHardwareUniversal.ejecutarComandoHardware(
-                        comando: 'DETECTAR_TONO_HZ',
-                        argumentos: {'frecuencia_simulada': '528.0'},
-                      );
-                      setState(() {});
-                      w.onFeedback(r['mensaje']?.toString() ?? 'Hz OK');
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-          if (_moduloActivo == 'GPS_3D_CALENDARIO') ...[
-            GestureDetector(
-              onHorizontalDragUpdate: (d) => setState(() => _rotacion3d += d.delta.dx * 0.02),
-              child: Container(
-                height: 110,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF050B18),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFFF00FC)),
-                ),
-                child: Transform(
-                  alignment: Alignment.center,
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, 0.0015)
-                    ..rotateY(_rotacion3d),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Ionicons.cube_outline, color: Color(0xFF00FF66), size: 36),
-                      SizedBox(width: 8),
-                      Text('CUBO HOLOGRAMA 3D AR (DESLIZA 360°)', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TableCalendar(
-              firstDay: DateTime.utc(2024, 1, 1),
-              lastDay: DateTime.utc(2030, 12, 31),
-              focusedDay: _diaCalendario,
-              calendarFormat: CalendarFormat.week,
-              selectedDayPredicate: (d) => isSameDay(_diaCalendario, d),
-              onDaySelected: (sel, foc) {
-                setState(() => _diaCalendario = sel);
-                w.onFeedback('Fecha seleccionada: ${sel.day}/${sel.month}/${sel.year}');
-              },
-            ),
-          ],
-          if (_moduloActivo == 'POS_STRIPE_OCR_IOT') ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                {'cmd': 'IMPRIMIR_POS_80MM', 'lbl': 'IMPRIMIR TICKET 80MM', 'col': 0xFF00FF66},
-                {'cmd': 'COBRAR_STRIPE', 'lbl': 'PASARELA STRIPE', 'col': 0xFF00F3FF},
-                {'cmd': 'LEER_OCR', 'lbl': 'ESCANEAR OCR RECIBO', 'col': 0xFFFFD700},
-                {'cmd': 'VALIDAR_BIOMETRIA', 'lbl': 'BIOMETRIA HUELLA', 'col': 0xFFFF00FC},
-                {'cmd': 'ENVIAR_MQTT_IOT', 'lbl': 'IOT ARDUINO / ESP32', 'col': 0xFF00FF66},
-                {'cmd': 'OBTENER_GPS', 'lbl': 'GEODESIA GPS LATLONG2', 'col': 0xFF00F3FF},
-              ].map((b) {
-                return ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(b['col'] as int),
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: () async {
-                    final Map r = await BusHardwareUniversal.ejecutarComandoHardware(
-                      comando: b['cmd'].toString(),
-                      argumentos: {},
-                    );
-                    w.onFeedback(r['mensaje']?.toString() ?? 'Ejecutado');
-                  },
-                  child: Text(b['lbl'].toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
-                );
-              }).toList(),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

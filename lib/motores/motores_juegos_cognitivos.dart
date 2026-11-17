@@ -46,26 +46,34 @@ class _MotoresJuegosCognitivosState extends State
   String _direccionEscritura = 'DERECHA_A_IZQUIERDA';
   String _entradaPizarra = '';
 
-  String _subModoMatriz = 'SCHULTE_CHIMP';
+  String _subModoMatriz = 'SCHULTE';
   int _cantNumeros = 25;
+  int _dimensionN = 5;
   String _modoToqueSchulte = 'PRESIONAR';
   List _tableroNumeros = [];
   int _objetivoActual = 1;
   bool _chimpOculto = false;
-  final Set _patronMemoria = {0, 4, 8, 12};
+  Set _patronMemoria = {0, 4, 8, 12};
   final Set _patronTocadas = {};
   bool _mostrandoPatronGrid = false;
-  final String _itemArrastrable = 'Manzana (Saludable)';
+  String _itemArrastrable = 'Item';
+  String _etiquetaMetaDrag = 'SOLTAR AQUI';
   int _indiceSwipe = 0;
   String _objetivoRain = 'A-7';
-  final List _capsulasRain = ['A-7', 'B-9', 'K-4', 'M-2', 'X-5', 'Z-1'];
+  List _capsulasRain = ['A-7', 'B-9', 'K-4', 'M-2', 'X-5', 'Z-1'];
 
   double _frecuenciaHzDetectada = 440.0;
-  String _clasificacionTono = 'LA4 (440 Hz · Tono Medio)';
+  String _clasificacionTono = '';
   int _segundosBolsillo = 0;
-  final TextEditingController _ctrlFraseBolsillo = TextEditingController(
-    text: 'Atencion: Recuerda completar tu entrenamiento cognitivo y revisar tus pendientes.',
-  );
+  final TextEditingController _ctrlFraseBolsillo = TextEditingController();
+
+  static Color _hexColor(String? hex, Color def) {
+    if (hex == null || hex.trim().isEmpty) return def;
+    String limpio = hex.replaceAll('#', '').trim();
+    if (limpio.length == 6) limpio = 'FF$limpio';
+    final int? val = int.tryParse(limpio, radix: 16);
+    return val != null ? Color(val) : def;
+  }
 
   @override
   void initState() {
@@ -77,6 +85,12 @@ class _MotoresJuegosCognitivosState extends State
     );
     _inicializarParametrosDesdeJson();
     EstadoGlobalSdui.instancia.registrarListenerCicloVida(_alCambiarCicloVidaApp);
+  }
+
+  @override
+  void didUpdateWidget(covariant StatefulWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _inicializarParametrosDesdeJson();
   }
 
   @override
@@ -94,18 +108,22 @@ class _MotoresJuegosCognitivosState extends State
     final w = widget as MotoresJuegosCognitivos;
     if (evento == 'ON_APP_PAUSED' && _corriendo) {
       _errores++;
-      w.onFeedback('Alerta Anti-Trampas: Pausa detectada durante la sesion.');
+      final String msgPausa =
+          w.configJson['mensaje_antitrampas']?.toString() ?? 'Pausa detectada.';
+      w.onFeedback(msgPausa);
     }
   }
 
   void _inicializarParametrosDesdeJson() {
     final w = widget as MotoresJuegosCognitivos;
     final Map cfg = w.configJson;
+
     final rawItems = cfg['items'];
     if (rawItems is List && rawItems.isNotEmpty) {
       _itemsSecuencia = rawItems.map((e) => e.toString()).toList();
     } else {
-      _itemsSecuencia = List.generate(25, (i) => '${i + 1}');
+      final int nItems = int.tryParse(cfg['cantidad_items']?.toString() ?? '25') ?? 25;
+      _itemsSecuencia = List.generate(nItems, (i) => '${i + 1}');
     }
 
     _operandoA = int.tryParse(cfg['operando_a']?.toString() ?? '14') ?? 14;
@@ -114,7 +132,43 @@ class _MotoresJuegosCognitivosState extends State
     _direccionEscritura =
         cfg['direccion_escritura']?.toString() ?? 'DERECHA_A_IZQUIERDA';
 
+    _subModoMatriz =
+        (cfg['submodo']?.toString() ?? 'SCHULTE').toUpperCase().trim();
     _cantNumeros = int.tryParse(cfg['cantidad_numeros']?.toString() ?? '25') ?? 25;
+    _dimensionN = int.tryParse(
+          cfg['dimension_n']?.toString() ?? (_cantNumeros == 16 ? '4' : '5'),
+        ) ??
+        5;
+    _modoToqueSchulte = (cfg['modo_toque']?.toString() ??
+            (_subModoMatriz == 'CHIMP' ? 'CHIMP' : 'PRESIONAR'))
+        .toUpperCase()
+        .trim();
+
+    if (cfg['patron'] is List) {
+      _patronMemoria = (cfg['patron'] as List)
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .toSet();
+    }
+
+    _itemArrastrable = cfg['item_draggable']?.toString() ?? 'Elemento';
+    _etiquetaMetaDrag = cfg['etiqueta_destino']?.toString() ?? 'SOLTAR AQUI';
+
+    if (cfg['capsulas_rain'] is List && (cfg['capsulas_rain'] as List).isNotEmpty) {
+      _capsulasRain =
+          (cfg['capsulas_rain'] as List).map((e) => e.toString()).toList();
+      _objetivoRain = cfg['objetivo_rain']?.toString() ?? _capsulasRain.first.toString();
+    }
+
+    if (_ctrlFraseBolsillo.text.isEmpty) {
+      _ctrlFraseBolsillo.text = cfg['frase_inicial']?.toString() ?? '';
+    }
+
+    if (_subModoMatriz == 'ALPHA_RAIN' || _subModoMatriz == 'ALPHA_RAIN_2D') {
+      _fisicaCtrl.repeat();
+    } else {
+      _fisicaCtrl.stop();
+    }
+
     _prepararTableroSchulte(iniciar: false);
   }
 
@@ -144,18 +198,24 @@ class _MotoresJuegosCognitivosState extends State
           'aciertos': _aciertos,
           'errores': _errores,
           'tiempo_ms': _tiempoMs,
-          'usuario_id': EstadoGlobalSdui.instancia.leerRuta('sesion.usuario_id') ?? 'JUGADOR_SDUI',
+          'submodo': _subModoMatriz,
+          'usuario_id':
+              EstadoGlobalSdui.instancia.leerRuta('sesion.usuario_id') ?? 'JUGADOR_SDUI',
         },
       },
     );
 
     final String msg = res['mensaje']?.toString() ??
-        'Evaluado: $_aciertos aciertos en ${(_tiempoMs / 1000).toStringAsFixed(1)}s';
+        'OK: $_aciertos (${(_tiempoMs / 1000).toStringAsFixed(1)}s)';
+    EstadoGlobalSdui.instancia.escribirRuta('sistema.ultimo_resultado_juego', msg);
     w.onFeedback(msg);
-    await BusHardwareUniversal.ejecutarComandoHardware(
-      comando: 'HABLAR_TTS',
-      argumentos: {'texto': msg},
-    );
+
+    if (w.configJson['hablar_al_evaluar'] == true) {
+      await BusHardwareUniversal.ejecutarComandoHardware(
+        comando: 'HABLAR_TTS',
+        argumentos: {'texto': msg},
+      );
+    }
   }
 
   void _iniciarSecuenciaMemoria() {
@@ -191,37 +251,47 @@ class _MotoresJuegosCognitivosState extends State
 
   Widget _construirMotorSecuenciaMemoria() {
     final w = widget as MotoresJuegosCognitivos;
+    final Map cfg = w.configJson;
+    final Color colPrimario =
+        _hexColor(cfg['color_primario']?.toString(), const Color(0xFF00FF66));
+    final String txtEspera =
+        cfg['texto_espera']?.toString() ?? '(${_itemsSecuencia.length})';
+    final String txtOculto = cfg['texto_oculto']?.toString() ?? '?';
+    final String placeholder = cfg['placeholder_respuesta']?.toString() ?? '';
+    final String txtIniciar = cfg['texto_boton_iniciar']?.toString() ?? 'INICIAR';
+    final String txtEvaluar = cfg['texto_boton_evaluar']?.toString() ?? 'EVALUAR';
+
     final String itemActual = (_idxMostrandoSecuencia >= 0 &&
             _idxMostrandoSecuencia < _itemsSecuencia.length)
         ? _itemsSecuencia[_idxMostrandoSecuencia].toString()
-        : (_ocultandoSecuencia ? '¿RECUERDAS LA SECUENCIA?' : 'LISTO (${_itemsSecuencia.length} ITEMS)');
+        : (_ocultandoSecuencia ? txtOculto : txtEspera);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 14),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 14),
           decoration: BoxDecoration(
             color: const Color(0xFF050B18),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF00FF66), width: 1.5),
+            border: Border.all(color: colPrimario, width: 1.5),
           ),
           child: Text(
             itemActual,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF00FF66),
-              fontSize: 28,
+            style: TextStyle(
+              color: colPrimario,
+              fontSize: 26,
               fontWeight: FontWeight.w900,
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         TextField(
           controller: _ctrlRespuestaSecuencia,
           style: const TextStyle(color: Colors.white, fontSize: 13),
           decoration: InputDecoration(
-            hintText: 'Escribe los primeros o ultimos items recordados separados por coma...',
+            hintText: placeholder,
             hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
             filled: true,
             fillColor: Colors.black,
@@ -232,31 +302,35 @@ class _MotoresJuegosCognitivosState extends State
         Row(
           children: [
             Expanded(
-              child: ElevatedButton.icon(
+              child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00F3FF),
                   foregroundColor: Colors.black,
                 ),
-                icon: const Icon(Icons.play_arrow, size: 18),
-                label: const Text('MOSTRAR SECUENCIA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
                 onPressed: _iniciarSecuenciaMemoria,
+                child: Text(
+                  txtIniciar,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: ElevatedButton.icon(
+              child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00FF66),
+                  backgroundColor: colPrimario,
                   foregroundColor: Colors.black,
                 ),
-                icon: const Icon(Icons.check_circle, size: 18),
-                label: const Text('EVALUAR EN SERVIDOR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
                 onPressed: () {
-                  _aciertos += 5;
+                  _aciertos++;
                   _evaluarJuegoEnServidor(
-                    w.configJson['juego_id']?.toString() ?? 'SEC_MEMORIA',
+                    cfg['juego_id']?.toString() ?? 'SEC_MEMORIA',
                   );
                 },
+                child: Text(
+                  txtEvaluar,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                ),
               ),
             ),
           ],
@@ -289,13 +363,16 @@ class _MotoresJuegosCognitivosState extends State
   }
 
   Widget _construirMotorPizarraVedica() {
+    final w = widget as MotoresJuegosCognitivos;
+    final Map cfg = w.configJson;
+    final String txtBorrar = cfg['texto_boton_borrar']?.toString() ?? 'C';
     final int a1 = _operandoA ~/ 10;
     final int a0 = _operandoA % 10;
     final int b1 = _operandoB ~/ 10;
     final int b0 = _operandoB % 10;
-    final int paso1Unidades = a0 * b0;
-    final int paso2Cruzado = (a1 * b0) + (a0 * b1) + (paso1Unidades ~/ 10);
-    final int paso3Decenas = (a1 * b1) + (paso2Cruzado ~/ 10);
+    final int paso1 = a0 * b0;
+    final int paso2 = (a1 * b0) + (a0 * b1) + (paso1 ~/ 10);
+    final int paso3 = (a1 * b1) + (paso2 ~/ 10);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -309,40 +386,27 @@ class _MotoresJuegosCognitivosState extends State
           ),
           child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Escritura: $_direccionEscritura',
-                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 10.5, fontWeight: FontWeight.bold),
-                  ),
-                  InkWell(
-                    onTap: () => setState(() => _mostrarGuiaCruzada = !_mostrarGuiaCruzada),
-                    child: Text(
-                      _mostrarGuiaCruzada ? 'Ocultar Guia Simetrica' : 'Ver Guia Simetrica',
-                      style: const TextStyle(color: Color(0xFF00FF66), fontSize: 10.5, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
               Text(
                 '$_operandoA × $_operandoB = ${_entradaPizarra.isEmpty ? "?" : _entradaPizarra}',
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'monospace',
+                ),
               ),
               if (_mostrarGuiaCruzada) ...[
                 const Divider(color: Colors.white24),
                 Text(
-                  'Paso 1 (Vertical Der): $a0×$b0 = $paso1Unidades (Escribe ${paso1Unidades % 10}, lleva ${paso1Unidades ~/ 10})\n'
-                  'Paso 2 (Aspa Cruzada): ($a1×$b0)+($a0×$b1)+${paso1Unidades ~/ 10} = $paso2Cruzado (Escribe ${paso2Cruzado % 10}, lleva ${paso2Cruzado ~/ 10})\n'
-                  'Paso 3 (Vertical Izq): ($a1×$b1)+${paso2Cruzado ~/ 10} = $paso3Decenas',
-                  style: const TextStyle(color: Color(0xFF00FF66), fontSize: 11, height: 1.35),
+                  '1) $a0×$b0=$paso1  |  2) ($a1×$b0)+($a0×$b1)+${paso1 ~/ 10}=$paso2  |  3) ($a1×$b1)+${paso2 ~/ 10}=$paso3',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF00FF66), fontSize: 11),
                 ),
               ],
             ],
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -350,8 +414,8 @@ class _MotoresJuegosCognitivosState extends State
           children: [
             ...['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].map(
               (d) => SizedBox(
-                width: 56,
-                height: 42,
+                width: 52,
+                height: 40,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF142033),
@@ -359,17 +423,21 @@ class _MotoresJuegosCognitivosState extends State
                     padding: EdgeInsets.zero,
                   ),
                   onPressed: () => _teclearDigitoPizarra(d),
-                  child: Text(d, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                  child: Text(d, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
                 ),
               ),
             ),
             SizedBox(
-              width: 90,
-              height: 42,
+              width: 64,
+              height: 40,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.zero,
+                ),
                 onPressed: () => setState(() => _entradaPizarra = ''),
-                child: const Text('BORRAR', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
+                child: Text(txtBorrar, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
               ),
             ),
           ],
@@ -390,15 +458,24 @@ class _MotoresJuegosCognitivosState extends State
   }
 
   void _tocarCeldaSchulte(int n) {
+    final w = widget as MotoresJuegosCognitivos;
     if (_modoToqueSchulte == 'SOLO_MENTAL') {
-      if (!_corriendo) _prepararTableroSchulte(iniciar: true);
+      if (!_corriendo) {
+        _prepararTableroSchulte(iniciar: true);
+      } else {
+        _aciertos = _cantNumeros;
+        _evaluarJuegoEnServidor(w.configJson['juego_id']?.toString() ?? 'SCHULTE_MENTAL');
+      }
       return;
     }
     if (!_corriendo && n == 1) {
       _iniciarCronometro();
       setState(() {
         _objetivoActual = 2;
-        if (_modoToqueSchulte == 'CHIMP') _chimpOculto = true;
+        _aciertos = 1;
+        if (_modoToqueSchulte == 'CHIMP' || _subModoMatriz == 'CHIMP') {
+          _chimpOculto = true;
+        }
       });
       return;
     }
@@ -410,7 +487,7 @@ class _MotoresJuegosCognitivosState extends State
         _aciertos++;
       });
       if (_objetivoActual > _cantNumeros) {
-        _evaluarJuegoEnServidor('SCHULTE_$_cantNumeros');
+        _evaluarJuegoEnServidor(w.configJson['juego_id']?.toString() ?? 'SCHULTE_$_cantNumeros');
       }
     } else {
       HapticFeedback.heavyImpact();
@@ -420,125 +497,37 @@ class _MotoresJuegosCognitivosState extends State
 
   Widget _construirMotorMatrizYFisica2D() {
     final w = widget as MotoresJuegosCognitivos;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              {'k': 'SCHULTE_CHIMP', 't': '1. Schulte 16-50 & Chimp'},
-              {'k': 'GRID_MEMORY', 't': '2. Grid Memory NxN'},
-              {'k': 'DRAG_SORTER_SWIPE', 't': '3. Sorter & Swipe V/F'},
-              {'k': 'ALPHA_RAIN_2D', 't': '4. AlphaRain Fisica 2D'},
-            ].map((m) {
-              final bool sel = _subModoMatriz == m['k'];
-              return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: ChoiceChip(
-                  label: Text(
-                    m['t']!,
-                    style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
-                  ),
-                  selected: sel,
-                  selectedColor: const Color(0xFF00FF66),
-                  backgroundColor: const Color(0xFF142033),
-                  onSelected: (_) { setState(() => _subModoMatriz = m['k']!); if (_subModoMatriz == 'ALPHA_RAIN_2D') { _fisicaCtrl.repeat(); } else { _fisicaCtrl.stop(); } },
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (_subModoMatriz == 'SCHULTE_CHIMP') ...[
-          Wrap(
-            spacing: 6,
-            children: [16, 25, 30, 35, 50].map((c) {
-              final bool s = _cantNumeros == c;
-              return ChoiceChip(
-                label: Text('$c Nums', style: TextStyle(color: s ? Colors.black : Colors.white, fontSize: 10)),
-                selected: s,
-                selectedColor: const Color(0xFF00F3FF),
-                onSelected: (_) {
-                  setState(() => _cantNumeros = c);
-                  _prepararTableroSchulte(iniciar: false);
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: ['PRESIONAR', 'SOLO_MENTAL', 'CHIMP'].map((modo) {
-              final bool act = _modoToqueSchulte == modo;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: act ? const Color(0xFFFFD700) : Colors.black,
-                    ),
-                    onPressed: () {
-                      setState(() => _modoToqueSchulte = modo);
-                      _prepararTableroSchulte(iniciar: false);
-                    },
-                    child: Text(modo, style: TextStyle(color: act ? Colors.black : Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
+    final Map cfg = w.configJson;
+    final Color colBorde =
+        _hexColor(cfg['color_primario']?.toString(), const Color(0xFF00F3FF));
+
+    if (_subModoMatriz == 'GRID_MEMORY') {
+      final int totalCeldas = _dimensionN * _dimensionN;
+      final String txtDestellar =
+          cfg['texto_boton_iniciar']?.toString() ?? 'DESTELLAR PATRON';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: _cantNumeros == 16 ? 4 : 5,
-              crossAxisSpacing: 5,
-              mainAxisSpacing: 5,
-              childAspectRatio: _cantNumeros >= 35 ? 1.3 : 1.05,
-            ),
-            itemCount: _tableroNumeros.length,
-            itemBuilder: (ctx, i) {
-              final int val = (_tableroNumeros[i] as num).toInt();
-              final bool hecho = _modoToqueSchulte != 'SOLO_MENTAL' && val < _objetivoActual;
-              return InkWell(
-                onTap: () => _tocarCeldaSchulte(val),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: hecho ? const Color(0xFF052E16) : const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: hecho ? const Color(0xFF00FF66) : const Color(0xFF00F3FF)),
-                  ),
-                  child: Text(
-                    _chimpOculto && !hecho ? '?' : '$val',
-                    style: TextStyle(color: hecho ? Colors.white38 : Colors.white, fontSize: 15, fontWeight: FontWeight.w900),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-        if (_subModoMatriz == 'GRID_MEMORY') ...[
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
+              crossAxisCount: _dimensionN,
               crossAxisSpacing: 6,
               mainAxisSpacing: 6,
-              childAspectRatio: 1.3,
+              childAspectRatio: 1.25,
             ),
-            itemCount: 16,
+            itemCount: totalCeldas,
             itemBuilder: (ctx, idx) {
               final bool activa = (_mostrandoPatronGrid && _patronMemoria.contains(idx)) ||
                   (!_mostrandoPatronGrid && _patronTocadas.contains(idx));
               return InkWell(
                 onTap: () {
+                  if (_mostrandoPatronGrid) return;
                   setState(() => _patronTocadas.add(idx));
                   if (_patronTocadas.containsAll(_patronMemoria)) {
-                    _aciertos += 4;
-                    _evaluarJuegoEnServidor('GRID_MEMORY_4X4');
+                    _aciertos += _patronMemoria.length;
+                    _evaluarJuegoEnServidor(cfg['juego_id']?.toString() ?? 'GRID_MEMORY');
                   }
                 },
                 child: Container(
@@ -546,15 +535,27 @@ class _MotoresJuegosCognitivosState extends State
                   decoration: BoxDecoration(
                     color: activa ? const Color(0xFF00FF66) : const Color(0xFF142033),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: colBorde),
                   ),
-                  child: Text('${idx + 1}', style: TextStyle(color: activa ? Colors.black : Colors.white)),
+                  child: Text(
+                    '${idx + 1}',
+                    style: TextStyle(
+                      color: activa ? Colors.black : Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               );
             },
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colBorde,
+              foregroundColor: Colors.black,
+            ),
             onPressed: () {
+              _iniciarCronometro();
               setState(() {
                 _patronTocadas.clear();
                 _mostrandoPatronGrid = true;
@@ -563,10 +564,19 @@ class _MotoresJuegosCognitivosState extends State
                 if (mounted) setState(() => _mostrandoPatronGrid = false);
               });
             },
-            child: const Text('DESTELLAR PATRON 2 SEGUNDOS'),
+            child: Text(txtDestellar, style: const TextStyle(fontWeight: FontWeight.w900)),
           ),
         ],
-        if (_subModoMatriz == 'DRAG_SORTER_SWIPE') ...[
+      );
+    }
+
+    if (_subModoMatriz == 'DRAG_SORTER' ||
+        _subModoMatriz == 'SWIPE' ||
+        _subModoMatriz == 'DRAG_SORTER_SWIPE') {
+      final String txtSwipe = cfg['texto_swipe']?.toString() ?? 'Desliza V / F';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -577,14 +587,17 @@ class _MotoresJuegosCognitivosState extends State
                   child: Chip(label: Text(_itemArrastrable)),
                 ),
                 child: Chip(
-                  backgroundColor: const Color(0xFF00F3FF),
-                  label: Text('Arrastra: $_itemArrastrable', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  backgroundColor: colBorde,
+                  label: Text(
+                    _itemArrastrable,
+                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
               DragTarget(
-                onAcceptWithDetails: (d) {
+                onAcceptWithDetails: (_) {
                   _aciertos++;
-                  _evaluarJuegoEnServidor('NUTRI_SORTER_DRAG');
+                  _evaluarJuegoEnServidor(cfg['juego_id']?.toString() ?? 'SORTER_DRAG');
                 },
                 builder: (ctx, cand, rej) => Container(
                   padding: const EdgeInsets.all(14),
@@ -593,7 +606,14 @@ class _MotoresJuegosCognitivosState extends State
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFF00FF66)),
                   ),
-                  child: const Text('SUELTA AQUI (CANASTA BIO)', style: TextStyle(color: Color(0xFF00FF66), fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    _etiquetaMetaDrag,
+                    style: const TextStyle(
+                      color: Color(0xFF00FF66),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -604,7 +624,7 @@ class _MotoresJuegosCognitivosState extends State
             onDismissed: (_) {
               setState(() => _indiceSwipe++);
               _aciertos++;
-              w.onFeedback('Swipe V/F procesado (#$_indiceSwipe)');
+              _evaluarJuegoEnServidor(cfg['juego_id']?.toString() ?? 'SWIPE_VF');
             },
             child: Container(
               padding: const EdgeInsets.all(14),
@@ -614,16 +634,26 @@ class _MotoresJuegosCognitivosState extends State
                 border: Border.all(color: const Color(0xFFFF00FC)),
               ),
               child: Text(
-                'Tarjeta Swipe V/F #${_indiceSwipe + 1}: Desliza a izquierda (Falso) o derecha (Verdadero)',
+                '$txtSwipe (#${_indiceSwipe + 1})',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
         ],
-        if (_subModoMatriz == 'ALPHA_RAIN_2D') ...[
+      );
+    }
+
+    if (_subModoMatriz == 'ALPHA_RAIN' || _subModoMatriz == 'ALPHA_RAIN_2D') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Text(
-            'Atrapa Capsula Cayendo: $_objetivoRain',
+            '🎯 $_objetivoRain',
             textAlign: TextAlign.center,
             style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w900),
           ),
@@ -645,18 +675,32 @@ class _MotoresJuegosCognitivosState extends State
                           if (cod == _objetivoRain) {
                             _aciertos++;
                             _capsulasRain.shuffle(_rng);
-                            setState(() => _objetivoRain = _capsulasRain.first.toString());
-                            _evaluarJuegoEnServidor('ALPHA_RAIN_2D');
+                            setState(
+                              () => _objetivoRain = _capsulasRain.first.toString(),
+                            );
+                            _evaluarJuegoEnServidor(
+                              cfg['juego_id']?.toString() ?? 'ALPHA_RAIN',
+                            );
                           }
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFF1E1B4B),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFF00F3FF)),
+                            border: Border.all(color: colBorde),
                           ),
-                          child: Text(cod, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900)),
+                          child: Text(
+                            cod,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -666,29 +710,69 @@ class _MotoresJuegosCognitivosState extends State
             ),
           ),
         ],
-      ],
+      );
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _dimensionN,
+        crossAxisSpacing: 5,
+        mainAxisSpacing: 5,
+        childAspectRatio: _cantNumeros >= 35 ? 1.3 : 1.05,
+      ),
+      itemCount: _tableroNumeros.length,
+      itemBuilder: (ctx, i) {
+        final int val = (_tableroNumeros[i] as num).toInt();
+        final bool hecho = _modoToqueSchulte != 'SOLO_MENTAL' && val < _objetivoActual;
+        return InkWell(
+          onTap: () => _tocarCeldaSchulte(val),
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: hecho ? const Color(0xFF052E16) : const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: hecho ? const Color(0xFF00FF66) : colBorde,
+              ),
+            ),
+            child: Text(
+              _chimpOculto && !hecho ? '?' : '$val',
+              style: TextStyle(
+                color: hecho ? Colors.white38 : Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   Future _medirFrecuenciaHz() async {
     final w = widget as MotoresJuegosCognitivos;
+    final String freqSim =
+        w.configJson['frecuencia_simulada']?.toString() ?? '440.0';
     final Map res = await BusHardwareUniversal.ejecutarComandoHardware(
       comando: 'DETECTAR_TONO_HZ',
-      argumentos: {},
+      argumentos: {'frecuencia_simulada': freqSim},
     );
     if (!mounted) return;
     setState(() {
-      _frecuenciaHzDetectada = double.tryParse(res['frecuencia_hz']?.toString() ?? '440.0') ?? 440.0;
-      _clasificacionTono = res['clasificacion']?.toString() ?? 'Tono Medio';
+      _frecuenciaHzDetectada =
+          double.tryParse(res['frecuencia_hz']?.toString() ?? '440.0') ?? 440.0;
+      _clasificacionTono = res['clasificacion']?.toString() ?? '';
     });
-    w.onFeedback('Frecuencia detectada: $_frecuenciaHzDetectada Hz ($_clasificacionTono)');
+    w.onFeedback('${_frecuenciaHzDetectada.toStringAsFixed(1)} Hz $_clasificacionTono');
   }
 
   void _activarTemporizadorBolsillo(int segundos) {
     final w = widget as MotoresJuegosCognitivos;
     _timerPrincipal?.cancel();
     setState(() => _segundosBolsillo = segundos);
-    w.onFeedback('Modo Bolsillo: Hablara en $segundos segundos.');
+    w.onFeedback('Temporizador bolsillo: ${segundos}s');
     _timerPrincipal = Timer.periodic(const Duration(seconds: 1), (t) async {
       if (_segundosBolsillo > 1) {
         if (mounted) {
@@ -708,6 +792,15 @@ class _MotoresJuegosCognitivosState extends State
   }
 
   Widget _construirMotorAudioVozTono() {
+    final w = widget as MotoresJuegosCognitivos;
+    final Map cfg = w.configJson;
+    final int segsBolsillo =
+        int.tryParse(cfg['segundos_bolsillo']?.toString() ?? '5') ?? 5;
+    final String txtHablar = cfg['texto_boton_hablar']?.toString() ?? 'HABLAR TTS';
+    final String txtBolsillo =
+        cfg['texto_boton_bolsillo']?.toString() ?? 'BOLSILLO (${segsBolsillo}S)';
+    final String txtPitch = cfg['texto_boton_pitch']?.toString() ?? 'TONO HZ';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -721,13 +814,21 @@ class _MotoresJuegosCognitivosState extends State
           child: Column(
             children: [
               Text(
-                'Frecuencia Vocal: ${_frecuenciaHzDetectada.toStringAsFixed(1)} Hz · $_clasificacionTono',
-                style: const TextStyle(color: Color(0xFF00FF66), fontSize: 12.5, fontWeight: FontWeight.w900),
+                '${_frecuenciaHzDetectada.toStringAsFixed(1)} Hz ${_clasificacionTono.isEmpty ? "" : "· $_clasificacionTono"}',
+                style: const TextStyle(
+                  color: Color(0xFF00FF66),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               if (_segundosBolsillo > 0)
                 Text(
-                  'Disparo en Bolsillo en: ${_segundosBolsillo}s',
-                  style: const TextStyle(color: Color(0xFFFFD700), fontSize: 12, fontWeight: FontWeight.bold),
+                  '${_segundosBolsillo}s',
+                  style: const TextStyle(
+                    color: Color(0xFFFFD700),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
             ],
           ),
@@ -737,6 +838,8 @@ class _MotoresJuegosCognitivosState extends State
           controller: _ctrlFraseBolsillo,
           style: const TextStyle(color: Colors.white, fontSize: 12),
           decoration: InputDecoration(
+            hintText: cfg['placeholder_frase']?.toString() ?? '',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
             filled: true,
             fillColor: Colors.black,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -747,26 +850,41 @@ class _MotoresJuegosCognitivosState extends State
           spacing: 8,
           runSpacing: 8,
           children: [
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00FF66), foregroundColor: Colors.black),
-              icon: const Icon(Icons.volume_up, size: 16),
-              label: const Text('HABLAR TTS AHORA', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00FF66),
+                foregroundColor: Colors.black,
+              ),
               onPressed: () => BusHardwareUniversal.ejecutarComandoHardware(
                 comando: 'HABLAR_TTS',
                 argumentos: {'texto': _ctrlFraseBolsillo.text},
               ),
+              child: Text(
+                txtHablar,
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900),
+              ),
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
-              icon: const Icon(Icons.timer, size: 16),
-              label: const Text('MODO BOLSILLO (5 SEG)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
-              onPressed: () => _activarTemporizadorBolsillo(5),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFD700),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () => _activarTemporizadorBolsillo(segsBolsillo),
+              child: Text(
+                txtBolsillo,
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900),
+              ),
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00F3FF), foregroundColor: Colors.black),
-              icon: const Icon(Icons.graphic_eq, size: 16),
-              label: const Text('MEDIR TONO HZ (PITCH)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00F3FF),
+                foregroundColor: Colors.black,
+              ),
               onPressed: _medirFrecuenciaHz,
+              child: Text(
+                txtPitch,
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900),
+              ),
             ),
           ],
         ),
@@ -777,7 +895,11 @@ class _MotoresJuegosCognitivosState extends State
   @override
   Widget build(BuildContext context) {
     final w = widget as MotoresJuegosCognitivos;
-    final String titulo = w.configJson['titulo']?.toString() ?? w.tipoMotor;
+    final EstadoGlobalSdui estado = EstadoGlobalSdui.instancia;
+    final String titulo =
+        estado.interpolarTexto(w.configJson['titulo']?.toString() ?? '');
+    final Color colBorde =
+        _hexColor(w.configJson['color_borde']?.toString(), const Color(0xFF00FF66));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -785,7 +907,7 @@ class _MotoresJuegosCognitivosState extends State
       decoration: BoxDecoration(
         color: const Color(0xFF0B132B),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF00FF66), width: 1.5),
+        border: Border.all(color: colBorde, width: 1.5),
       ),
       child: Stack(
         alignment: Alignment.topCenter,
@@ -796,23 +918,36 @@ class _MotoresJuegosCognitivosState extends State
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      titulo,
-                      style: const TextStyle(color: Color(0xFF00FF66), fontSize: 13, fontWeight: FontWeight.w900),
+                  if (titulo.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        titulo,
+                        style: TextStyle(
+                          color: colBorde,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     ),
-                  ),
                   Text(
-                    '${(_tiempoMs / 1000).toStringAsFixed(1)}s · OK:$_aciertos',
-                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11, fontWeight: FontWeight.bold),
+                    '${(_tiempoMs / 1000).toStringAsFixed(1)}s · $_aciertos',
+                    style: const TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
-              if (w.tipoMotor == 'MOTOR_SECUENCIA_MEMORIA') _construirMotorSecuenciaMemoria(),
-              if (w.tipoMotor == 'MOTOR_PIZARRA_VEDICA') _construirMotorPizarraVedica(),
-              if (w.tipoMotor == 'MOTOR_MATRIZ_Y_FISICA_2D') _construirMotorMatrizYFisica2D(),
-              if (w.tipoMotor == 'MOTOR_AUDIO_VOZ_TONO') _construirMotorAudioVozTono(),
+              if (w.tipoMotor == 'MOTOR_SECUENCIA_MEMORIA')
+                _construirMotorSecuenciaMemoria(),
+              if (w.tipoMotor == 'MOTOR_PIZARRA_VEDICA')
+                _construirMotorPizarraVedica(),
+              if (w.tipoMotor == 'MOTOR_MATRIZ_Y_FISICA_2D')
+                _construirMotorMatrizYFisica2D(),
+              if (w.tipoMotor == 'MOTOR_AUDIO_VOZ_TONO')
+                _construirMotorAudioVozTono(),
             ],
           ),
           ConfettiWidget(

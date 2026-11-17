@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -45,22 +46,53 @@ class _LienzoUniversalSduiState extends State {
 
   Future _sincronizarPantallas() async {
     if (mounted) setState(() => _cargando = true);
-    final List lista = await PuenteSupabaseSdui.sincronizarPantallasConHash();
+    final List listaCruda = await PuenteSupabaseSdui.sincronizarPantallasConHash();
     if (!mounted) return;
+
+    final String rolUsuario =
+        (EstadoGlobalSdui.instancia.leerRuta('sesion.rol')?.toString() ?? 'TODOS')
+            .toUpperCase()
+            .trim();
+
+    final List filtradas = listaCruda.where((item) {
+      if (item is! Map) return false;
+      final String rolReq =
+          (item['rol_requerido']?.toString() ?? 'TODOS').toUpperCase().trim();
+      return rolReq.isEmpty ||
+          rolReq == 'TODOS' ||
+          rolUsuario == 'TODOS' ||
+          rolReq == rolUsuario;
+    }).toList();
+
+    final int idxSeguro =
+        filtradas.isEmpty ? 0 : _idxPantalla.clamp(0, filtradas.length - 1);
+
     setState(() {
-      _pantallas = lista;
-      _idxPantalla = _idxPantalla.clamp(0, _pantallas.isEmpty ? 0 : _pantallas.length - 1);
+      _pantallas = filtradas;
+      _idxPantalla = idxSeguro;
       _cargando = false;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pageCtrl.hasClients && _pantallas.isNotEmpty) {
+        final int pagActual = (_pageCtrl.page?.round() ?? 0);
+        if (pagActual >= _pantallas.length) {
+          _pageCtrl.jumpToPage(_idxPantalla);
+        }
+      }
     });
   }
 
   void _navegarAPantalla(String pantallaId) {
-    final int idx = _pantallas.indexWhere((p) => (p as Map)['pantalla_id']?.toString() == pantallaId);
-    if (idx >= 0 && _pageCtrl.hasClients) {
+    if (_pantallas.isEmpty) return;
+    final int idx = _pantallas.indexWhere(
+      (p) => (p as Map)['pantalla_id']?.toString() == pantallaId,
+    );
+    if (idx >= 0 && idx < _pantallas.length && _pageCtrl.hasClients) {
       HapticFeedback.selectionClick();
       _pageCtrl.animateToPage(
         idx,
-        duration: const Duration(milliseconds: 260),
+        duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
       );
       setState(() => _idxPantalla = idx);
@@ -72,9 +104,11 @@ class _LienzoUniversalSduiState extends State {
   @override
   Widget build(BuildContext context) {
     final estado = EstadoGlobalSdui.instancia;
+    final int idxSeguro =
+        _pantallas.isEmpty ? 0 : _idxPantalla.clamp(0, _pantallas.length - 1);
     final String tituloActual = _pantallas.isNotEmpty
-        ? ((_pantallas[_idxPantalla] as Map)['titulo']?.toString() ?? 'SDUI Universal')
-        : 'Super-APK Universal SDUI';
+        ? ((_pantallas[idxSeguro] as Map)['titulo']?.toString() ?? 'SDUI Universal')
+        : '0 pantallas activas';
 
     return Scaffold(
       backgroundColor: const Color(0xFF050814),
@@ -86,10 +120,14 @@ class _LienzoUniversalSduiState extends State {
           children: [
             Text(
               tituloActual,
-              style: const TextStyle(color: Color(0xFF00FF66), fontSize: 13.5, fontWeight: FontWeight.w900),
+              style: const TextStyle(
+                color: Color(0xFF00FF66),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w900,
+              ),
             ),
             Text(
-              'Esquema: ${PuenteSupabaseSdui.esquemaActivo} · App: ${PuenteSupabaseSdui.appIdActivo} · Pag ${_idxPantalla + 1}/${_pantallas.isEmpty ? 1 : _pantallas.length}',
+              'Esquema: ${PuenteSupabaseSdui.esquemaActivo} · App: ${PuenteSupabaseSdui.appIdActivo} · Pag ${_pantallas.isEmpty ? 0 : idxSeguro + 1}/${_pantallas.length}',
               style: const TextStyle(color: Colors.white60, fontSize: 10),
             ),
           ],
@@ -105,21 +143,68 @@ class _LienzoUniversalSduiState extends State {
       body: Stack(
         children: [
           if (_cargando)
-            const Center(child: CircularProgressIndicator(color: Color(0xFF00FF66)))
-          else if (_pantallas.isEmpty)
             const Center(
-              child: Text('Sin pantallas cargadas.', style: TextStyle(color: Colors.white70)),
+              child: CircularProgressIndicator(color: Color(0xFF00FF66)),
+            )
+          else if (_pantallas.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.layers_clear, color: Color(0xFF00F3FF), size: 42),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '0 pantallas activas en este esquema/app',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00FF66),
+                        foregroundColor: Colors.black,
+                      ),
+                      icon: const Icon(Icons.sync, size: 18),
+                      label: const Text(
+                        'REINTENTAR SINCRONIZACION',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                      ),
+                      onPressed: _sincronizarPantallas,
+                    ),
+                  ],
+                ),
+              ),
             )
           else
             PageView.builder(
               controller: _pageCtrl,
               itemCount: _pantallas.length,
-              onPageChanged: (i) => setState(() => _idxPantalla = i),
+              onPageChanged: (i) {
+                if (i >= 0 && i < _pantallas.length) {
+                  setState(() => _idxPantalla = i);
+                }
+              },
               itemBuilder: (ctx, idx) {
+                if (idx < 0 || idx >= _pantallas.length) {
+                  return const SizedBox.shrink();
+                }
                 final Map reg = Map.from(_pantallas[idx] as Map);
-                final Map arbol = reg['arbol_json'] is Map
-                    ? Map.from(reg['arbol_json'] as Map)
-                    : {};
+                Map arbol = {};
+                final dynamic rawArbol = reg['arbol_json'];
+                if (rawArbol is Map) {
+                  arbol = Map.from(rawArbol);
+                } else if (rawArbol is String && rawArbol.trim().isNotEmpty) {
+                  try {
+                    final dec = jsonDecode(rawArbol.trim());
+                    if (dec is Map) arbol = Map.from(dec);
+                  } catch (_) {}
+                }
 
                 return RefreshIndicator(
                   color: const Color(0xFF00FF66),
@@ -127,14 +212,17 @@ class _LienzoUniversalSduiState extends State {
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(14),
-                    child: AnimatedBuilder(animation: estado, builder: (context, _) => RenderizadorAtomicoSdui.construirNodo(
-                      context: context,
-                      nodoRaw: arbol,
-                      estado: estado,
-                      onNavegar: _navegarAPantalla,
-                      onRecargar: _sincronizarPantallas,
-                      onFeedback: _mostrarFeedback,
-                    )),
+                    child: AnimatedBuilder(
+                      animation: estado,
+                      builder: (context, _) => RenderizadorAtomicoSdui.construirNodo(
+                        context: context,
+                        nodoRaw: arbol,
+                        estado: estado,
+                        onNavegar: _navegarAPantalla,
+                        onRecargar: _sincronizarPantallas,
+                        onFeedback: _mostrarFeedback,
+                      ),
+                    ),
                   ),
                 );
               },
@@ -154,7 +242,11 @@ class _LienzoUniversalSduiState extends State {
                 child: Text(
                   _toastFeedback,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF00FF66), fontSize: 11.5, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Color(0xFF00FF66),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -181,7 +273,8 @@ class RenderizadorAtomicoSdui {
     required Future Function() onRecargar,
     required void Function(String) onFeedback,
   }) {
-    final String tipo = (nodoRaw['type']?.toString() ?? nodoRaw['tipo']?.toString() ?? 'card').trim();
+    final String tipo =
+        (nodoRaw['type']?.toString() ?? nodoRaw['tipo']?.toString() ?? 'card').trim();
     final String tipoUpper = tipo.toUpperCase();
 
     if (tipoUpper == 'MOTOR_SECUENCIA_MEMORIA' ||
@@ -195,10 +288,23 @@ class RenderizadorAtomicoSdui {
       );
     }
 
-    if (tipoUpper == 'BUS_HARDWARE_UNIVERSAL') {
-      return BusHardwareUniversalWidget(
-        configJson: nodoRaw,
+    if (tipoUpper == 'SDUI_QR_VIEW' || tipoUpper == 'BUS_HARDWARE_UNIVERSAL') {
+      return SduiQrViewAtomico(
+        nodoRaw: nodoRaw,
         onFeedback: onFeedback,
+      );
+    }
+
+    if (tipoUpper == 'SDUI_CALENDARIO') {
+      return SduiCalendarioAtomico(
+        nodoRaw: nodoRaw,
+        onFeedback: onFeedback,
+      );
+    }
+
+    if (tipoUpper == 'SDUI_CUBO_3D') {
+      return SduiCubo3dAtomico(
+        nodoRaw: nodoRaw,
       );
     }
 
@@ -210,33 +316,35 @@ class RenderizadorAtomicoSdui {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: hijosRaw
-              .map((e) => e as Map)
-              .map((h) => construirNodo(
-                    context: context,
-                    nodoRaw: Map.from(h),
-                    estado: estado,
-                    onNavegar: onNavegar,
-                    onRecargar: onRecargar,
-                    onFeedback: onFeedback,
-                  ))
+              .map((h) => h is Map
+                  ? construirNodo(
+                      context: context,
+                      nodoRaw: Map.from(h),
+                      estado: estado,
+                      onNavegar: onNavegar,
+                      onRecargar: onRecargar,
+                      onFeedback: onFeedback,
+                    )
+                  : const SizedBox.shrink())
               .toList(),
         );
 
       case 'row':
         return Row(
           children: hijosRaw
-              .map((e) => e as Map)
               .map((h) => Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: construirNodo(
-                        context: context,
-                        nodoRaw: Map.from(h),
-                        estado: estado,
-                        onNavegar: onNavegar,
-                        onRecargar: onRecargar,
-                        onFeedback: onFeedback,
-                      ),
+                      child: h is Map
+                          ? construirNodo(
+                              context: context,
+                              nodoRaw: Map.from(h),
+                              estado: estado,
+                              onNavegar: onNavegar,
+                              onRecargar: onRecargar,
+                              onFeedback: onFeedback,
+                            )
+                          : const SizedBox.shrink(),
                     ),
                   ))
               .toList(),
@@ -245,20 +353,23 @@ class RenderizadorAtomicoSdui {
       case 'stack':
         return Stack(
           children: hijosRaw
-              .map((e) => e as Map)
-              .map((h) => construirNodo(
-                    context: context,
-                    nodoRaw: Map.from(h),
-                    estado: estado,
-                    onNavegar: onNavegar,
-                    onRecargar: onRecargar,
-                    onFeedback: onFeedback,
-                  ))
+              .map((h) => h is Map
+                  ? construirNodo(
+                      context: context,
+                      nodoRaw: Map.from(h),
+                      estado: estado,
+                      onNavegar: onNavegar,
+                      onRecargar: onRecargar,
+                      onFeedback: onFeedback,
+                    )
+                  : const SizedBox.shrink())
               .toList(),
         );
 
       case 'text':
-        final String texto = estado.interpolarTexto(nodoRaw['data']?.toString() ?? nodoRaw['texto']?.toString() ?? '');
+        final String texto = estado.interpolarTexto(
+          nodoRaw['data']?.toString() ?? nodoRaw['texto']?.toString() ?? '',
+        );
         final Color colorTxt = parsearColor(nodoRaw['color']?.toString(), Colors.white);
         final double fontSize = double.tryParse(nodoRaw['size']?.toString() ?? '13') ?? 13.0;
         return Padding(
@@ -272,7 +383,14 @@ class RenderizadorAtomicoSdui {
       case 'input':
         final String campo = nodoRaw['campo']?.toString() ?? 'input_generico';
         final String label = estado.interpolarTexto(nodoRaw['label']?.toString() ?? '');
-        final String placeholder = estado.interpolarTexto(nodoRaw['placeholder']?.toString() ?? '');
+        final String placeholder =
+            estado.interpolarTexto(nodoRaw['placeholder']?.toString() ?? '');
+        final bool esMultiline = nodoRaw['multiline'] == true;
+        final int maxLin = esMultiline
+            ? (int.tryParse(nodoRaw['lineas']?.toString() ?? '6') ?? 6)
+            : 1;
+        final int minLin = esMultiline ? 3 : 1;
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Column(
@@ -281,11 +399,26 @@ class RenderizadorAtomicoSdui {
               if (label.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(label, style: const TextStyle(color: Color(0xFFA9C7FF), fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFFA9C7FF),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               TextField(
-                obscureText: nodoRaw['password'] == true,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                obscureText: !esMultiline && nodoRaw['password'] == true,
+                maxLines: maxLin,
+                minLines: minLin,
+                keyboardType:
+                    esMultiline ? TextInputType.multiline : TextInputType.text,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: esMultiline ? 12 : 13,
+                  fontFamily: esMultiline ? 'monospace' : null,
+                ),
                 decoration: InputDecoration(
                   hintText: placeholder,
                   hintStyle: const TextStyle(color: Colors.white38, fontSize: 11.5),
@@ -298,16 +431,20 @@ class RenderizadorAtomicoSdui {
                     borderSide: const BorderSide(color: Color(0xFF00F3FF)),
                   ),
                 ),
-                onChanged: (val) => estado.escribirRuta('form.$campo', val, notificar: false),
+                onChanged: (val) =>
+                    estado.escribirRuta('form.$campo', val, notificar: false),
               ),
             ],
           ),
         );
 
       case 'button':
-        final String textoBtn = estado.interpolarTexto(nodoRaw['texto']?.toString() ?? 'EJECUTAR');
-        final Color bgCol = parsearColor(nodoRaw['color']?.toString(), const Color(0xFF00FF66));
-        final Color fgCol = parsearColor(nodoRaw['color_texto']?.toString(), Colors.black);
+        final String textoBtn =
+            estado.interpolarTexto(nodoRaw['texto']?.toString() ?? 'EJECUTAR');
+        final Color bgCol =
+            parsearColor(nodoRaw['color']?.toString(), const Color(0xFF00FF66));
+        final Color fgCol =
+            parsearColor(nodoRaw['color_texto']?.toString(), Colors.black);
         final List flujo = (nodoRaw['flujo_acciones'] as List?) ?? [];
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -327,7 +464,10 @@ class RenderizadorAtomicoSdui {
                 onFeedback: onFeedback,
               );
             },
-            child: Text(textoBtn, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            child: Text(
+              textoBtn,
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+            ),
           ),
         );
 
@@ -369,23 +509,27 @@ class RenderizadorAtomicoSdui {
           child: Column(
             children: [
               TabBar(
+                isScrollable: pestanas.length > 3,
                 indicatorColor: const Color(0xFF00FF66),
                 labelColor: const Color(0xFF00FF66),
                 unselectedLabelColor: Colors.white60,
                 tabs: pestanas.map((t) => Tab(text: t.toString())).toList(),
               ),
               SizedBox(
-                height: double.tryParse(nodoRaw['altura']?.toString() ?? '320') ?? 320,
+                height: double.tryParse(nodoRaw['altura']?.toString() ?? '360') ?? 360,
                 child: TabBarView(
                   children: hijosRaw
                       .map((h) => h is Map
-                          ? construirNodo(
-                              context: context,
-                              nodoRaw: Map.from(h),
-                              estado: estado,
-                              onNavegar: onNavegar,
-                              onRecargar: onRecargar,
-                              onFeedback: onFeedback,
+                          ? SingleChildScrollView(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: construirNodo(
+                                context: context,
+                                nodoRaw: Map.from(h),
+                                estado: estado,
+                                onNavegar: onNavegar,
+                                onRecargar: onRecargar,
+                                onFeedback: onFeedback,
+                              ),
                             )
                           : const SizedBox.shrink())
                       .toList(),
@@ -396,9 +540,13 @@ class RenderizadorAtomicoSdui {
         );
 
       case 'modal':
-        final String txtTrigger = estado.interpolarTexto(nodoRaw['texto_boton']?.toString() ?? 'Abrir Modal');
+        final String txtTrigger = estado.interpolarTexto(
+          nodoRaw['texto_boton']?.toString() ?? 'Abrir Modal',
+        );
         return OutlinedButton(
-          style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF00F3FF))),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFF00F3FF)),
+          ),
           onPressed: () {
             showModalBottomSheet(
               context: context,
@@ -425,10 +573,18 @@ class RenderizadorAtomicoSdui {
               ),
             );
           },
-          child: Text(txtTrigger, style: const TextStyle(color: Color(0xFF00F3FF), fontWeight: FontWeight.bold)),
+          child: Text(
+            txtTrigger,
+            style: const TextStyle(color: Color(0xFF00F3FF), fontWeight: FontWeight.bold),
+          ),
         );
 
       case 'chart':
+        final List pts = (nodoRaw['puntos'] as List?) ?? [1.5, 2.8, 2.3, 4.5, 3.9, 6.2];
+        final List spots = List.generate(
+          pts.length,
+          (i) => FlSpot(i.toDouble(), double.tryParse(pts[i].toString()) ?? 1.0),
+        );
         return Container(
           height: 190,
           margin: const EdgeInsets.only(bottom: 12),
@@ -445,14 +601,7 @@ class RenderizadorAtomicoSdui {
               borderData: FlBorderData(show: true),
               lineBarsData: [
                 LineChartBarData(
-                  spots: const [
-                    FlSpot(0, 1.5),
-                    FlSpot(1, 2.8),
-                    FlSpot(2, 2.3),
-                    FlSpot(3, 4.5),
-                    FlSpot(4, 3.9),
-                    FlSpot(5, 6.2),
-                  ],
+                  spots: spots.map((s) => s as FlSpot).toList(),
                   isCurved: true,
                   color: const Color(0xFF00FF66),
                   barWidth: 3,
@@ -464,9 +613,11 @@ class RenderizadorAtomicoSdui {
 
       case 'card':
       default:
-        final Color bordeCol = parsearColor(nodoRaw['color_borde']?.toString(), const Color(0xFF00F3FF));
+        final Color bordeCol =
+            parsearColor(nodoRaw['color_borde']?.toString(), const Color(0xFF00F3FF));
         final String tit = estado.interpolarTexto(nodoRaw['titulo']?.toString() ?? '');
-        final String sub = estado.interpolarTexto(nodoRaw['subtitulo']?.toString() ?? '');
+        final String sub =
+            estado.interpolarTexto(nodoRaw['subtitulo']?.toString() ?? '');
         return Container(
           margin: const EdgeInsets.only(bottom: 14),
           padding: const EdgeInsets.all(14),
@@ -479,11 +630,17 @@ class RenderizadorAtomicoSdui {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (tit.isNotEmpty)
-                Text(tit, style: TextStyle(color: bordeCol, fontSize: 14, fontWeight: FontWeight.w900)),
+                Text(
+                  tit,
+                  style: TextStyle(color: bordeCol, fontSize: 14, fontWeight: FontWeight.w900),
+                ),
               if (sub.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, bottom: 10),
-                  child: Text(sub, style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
+                  child: Text(
+                    sub,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11.5),
+                  ),
                 ),
               ...hijosRaw.map((h) => h is Map
                   ? construirNodo(
@@ -523,11 +680,10 @@ class _ListaAtomicaUniversalWidgetState extends State {
   List _itemsRemotos = [];
   String? _siguienteCursor;
   bool _cargandoTop10 = false;
-  int _tipoListaDemo = 0;
-  final Map _cantidadesStepper = {0: 2, 1: 1, 2: 3};
-  final Set _checksActivos = {0, 2};
-  final Map _switchesActivos = {0: true, 1: false, 2: true};
-  String _radioSeleccionado = 'OPCION_1';
+  final Map _cantidadesStepper = {};
+  final Set _checksActivos = {};
+  final Map _switchesActivos = {};
+  String _radioSeleccionado = '';
 
   @override
   void initState() {
@@ -565,14 +721,14 @@ class _ListaAtomicaUniversalWidgetState extends State {
   @override
   Widget build(BuildContext context) {
     final w = widget as _ListaAtomicaUniversalWidget;
-    final String modo = w.nodoRaw['modo']?.toString() ?? 'catalogo_8_listas';
-    final String titulo = w.nodoRaw['titulo']?.toString() ?? 'Lista Universal SDUI';
+    final estado = EstadoGlobalSdui.instancia;
+    final String modo = w.nodoRaw['modo']?.toString() ?? 'action_buttons';
+    final String titulo = estado.interpolarTexto(w.nodoRaw['titulo']?.toString() ?? '');
+    final List itemsJson = (w.nodoRaw['items'] as List?) ?? [];
 
     if (modo == 'vertical_paging') {
-      final List items = (w.nodoRaw['items'] as List?) ??
-          ['Reel SDUI #1 (Vertical Paging)', 'Reel SDUI #2 (TikTok Feed)', 'Reel SDUI #3 (Stream 9:16)'];
       return Container(
-        height: 260,
+        height: double.tryParse(w.nodoRaw['altura']?.toString() ?? '260') ?? 260,
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.black,
@@ -581,11 +737,15 @@ class _ListaAtomicaUniversalWidgetState extends State {
         ),
         child: PageView.builder(
           scrollDirection: Axis.vertical,
-          itemCount: items.length,
+          itemCount: itemsJson.length,
           itemBuilder: (ctx, i) => Center(
             child: Text(
-              items[i].toString(),
-              style: const TextStyle(color: Color(0xFF00FF66), fontSize: 16, fontWeight: FontWeight.w900),
+              estado.interpolarTexto(itemsJson[i].toString()),
+              style: const TextStyle(
+                color: Color(0xFF00FF66),
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ),
@@ -593,6 +753,8 @@ class _ListaAtomicaUniversalWidgetState extends State {
     }
 
     if (modo == 'cursor_top10') {
+      final String txtSig =
+          w.nodoRaw['texto_siguiente']?.toString() ?? 'SIGUIENTE CURSOR (LIMIT 10)';
       return Container(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(12),
@@ -604,27 +766,38 @@ class _ListaAtomicaUniversalWidgetState extends State {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(titulo, style: const TextStyle(color: Color(0xFF00F3FF), fontSize: 12.5, fontWeight: FontWeight.w900)),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Color(0xFF00FF66), size: 18),
-                  onPressed: () => _consultarCursorTop10(reiniciar: true),
-                ),
-              ],
-            ),
+            if (titulo.isNotEmpty)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      titulo,
+                      style: const TextStyle(
+                        color: Color(0xFF00F3FF),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Color(0xFF00FF66), size: 18),
+                    onPressed: () => _consultarCursorTop10(reiniciar: true),
+                  ),
+                ],
+              ),
             if (_cargandoTop10)
               const Padding(
                 padding: EdgeInsets.all(12),
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
             else if (_itemsRemotos.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('Sin registros en esta coleccion aun.', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  w.nodoRaw['texto_vacio']?.toString() ?? '0 registros encontrados.',
+                  style: const TextStyle(color: Colors.white60, fontSize: 11.5),
+                ),
               )
             else
               ..._itemsRemotos.map((rawIt) {
@@ -632,37 +805,30 @@ class _ListaAtomicaUniversalWidgetState extends State {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: const Color(0xFF142033), borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF142033),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Text(
-                    '${it['propietario_id'] ?? 'ID'} · [${it['estado']}] · ${it['datos']}',
+                    '${it['propietario_id'] ?? ''} · [${it['estado'] ?? ''}] · ${it['datos'] ?? ''}',
                     style: const TextStyle(color: Colors.white, fontSize: 11),
                   ),
                 );
               }),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => _consultarCursorTop10(reiniciar: false),
-                  child: const Text('SIGUIENTE CURSOR (LIMIT 10) ▶', style: TextStyle(color: Color(0xFFFFD700), fontSize: 11)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => _consultarCursorTop10(reiniciar: false),
+                child: Text(
+                  txtSig,
+                  style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11),
                 ),
-              ],
+              ),
             ),
           ],
         ),
       );
     }
-
-    const List nombresTecnicos = [
-      '1. ActionButtonListView (Botones Aprobar/Ejecutar)',
-      '2. StepperQuantityListView (Contadores [-] y [+])',
-      '3. CheckboxBatchListView (Seleccion por Lote)',
-      '4. SwitchToggleListView (Interruptores ON/OFF)',
-      '5. RadioExclusiveListView (Seleccion Unica)',
-      '6. AccordionExpansionListView (Cajon Desplegable)',
-      '7. QuickToolbarCardList (Barra Voz/Copiar/QR)',
-      '8. CursorPaginatedTop10List (B-Tree LIMIT 10)',
-    ];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -675,105 +841,111 @@ class _ListaAtomicaUniversalWidgetState extends State {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(titulo, style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: List.generate(nombresTecnicos.length, (i) {
-                final bool sel = _tipoListaDemo == i;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text('Tipo #${i + 1}', style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold)),
-                    selected: sel,
-                    selectedColor: const Color(0xFF00FF66),
-                    backgroundColor: const Color(0xFF142033),
-                    onSelected: (_) => setState(() => _tipoListaDemo = i),
-                  ),
-                );
-              }),
+          if (titulo.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                titulo,
+                style: const TextStyle(
+                  color: Color(0xFFFFD700),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            nombresTecnicos[_tipoListaDemo].toString(),
-            style: const TextStyle(color: Color(0xFF00F3FF), fontSize: 11.5, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-          ),
-          const SizedBox(height: 8),
-          ...List.generate(3, (i) {
-            if (_tipoListaDemo == 1) {
+          ...List.generate(itemsJson.length, (i) {
+            final dynamic item = itemsJson[i];
+            final String labelItem = item is Map
+                ? estado.interpolarTexto(item['titulo']?.toString() ?? item['texto']?.toString() ?? '')
+                : estado.interpolarTexto(item.toString());
+
+            if (modo == 'stepper') {
               final int cant = (_cantidadesStepper[i] as int?) ?? 1;
               return ListTile(
                 dense: true,
-                title: Text('Item Inventario #${i + 1} (Stepper)', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                title: Text(labelItem, style: const TextStyle(color: Colors.white, fontSize: 12)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(icon: const Icon(Icons.remove_circle, color: Colors.redAccent), onPressed: () => setState(() => _cantidadesStepper[i] = cant > 0 ? cant - 1 : 0)),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle, color: Colors.redAccent),
+                      onPressed: () => setState(() => _cantidadesStepper[i] = cant > 0 ? cant - 1 : 0),
+                    ),
                     Text('$cant', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    IconButton(icon: const Icon(Icons.add_circle, color: Color(0xFF00FF66)), onPressed: () => setState(() => _cantidadesStepper[i] = cant + 1)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle, color: Color(0xFF00FF66)),
+                      onPressed: () => setState(() => _cantidadesStepper[i] = cant + 1),
+                    ),
                   ],
                 ),
               );
             }
-            if (_tipoListaDemo == 2) {
+            if (modo == 'checkbox') {
               return CheckboxListTile(
                 dense: true,
                 value: _checksActivos.contains(i),
                 activeColor: const Color(0xFFFFD700),
                 checkColor: Colors.black,
-                title: Text('Registro Seleccionable #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                onChanged: (v) => setState(() => v == true ? _checksActivos.add(i) : _checksActivos.remove(i)),
+                title: Text(labelItem, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                onChanged: (v) =>
+                    setState(() => v == true ? _checksActivos.add(i) : _checksActivos.remove(i)),
               );
             }
-            if (_tipoListaDemo == 3) {
+            if (modo == 'switch') {
               return SwitchListTile(
                 dense: true,
                 value: (_switchesActivos[i] as bool?) ?? false,
                 activeColor: const Color(0xFF00FF66),
-                title: Text('Permiso / Sensor Activo #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                title: Text(labelItem, style: const TextStyle(color: Colors.white, fontSize: 12)),
                 onChanged: (v) => setState(() => _switchesActivos[i] = v),
               );
             }
-            if (_tipoListaDemo == 4) {
-              final String valOp = 'OPCION_${i + 1}';
+            if (modo == 'radio') {
               return RadioListTile(
                 dense: true,
-                value: valOp,
+                value: labelItem,
                 groupValue: _radioSeleccionado,
                 activeColor: const Color(0xFF00F3FF),
-                title: Text('Opcion Exclusiva #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                onChanged: (v) => setState(() => _radioSeleccionado = v?.toString() ?? valOp),
+                title: Text(labelItem, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                onChanged: (v) => setState(() => _radioSeleccionado = v?.toString() ?? labelItem),
               );
             }
-            if (_tipoListaDemo == 5) {
-              return ExpansionTile(
-                title: Text('Fila Desplegable #${i + 1} (ExpansionTile)', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: ElevatedButton(
-                      onPressed: () => w.onFeedback('Sub-accion ejecutada en fila #${i + 1}'),
-                      child: const Text('EJECUTAR SUB-ACCION'),
-                    ),
-                  ),
-                ],
-              );
-            }
+            final List flujoItem = (item is Map && item['flujo_acciones'] is List)
+                ? (item['flujo_acciones'] as List)
+                : [];
+            final String txtBtn = (item is Map && item['texto_boton'] != null)
+                ? item['texto_boton'].toString()
+                : 'EJECUTAR';
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(color: const Color(0xFF142033), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(
+                color: const Color(0xFF142033),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Fila Interactiva #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 11.5)),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00FF66), foregroundColor: Colors.black),
-                    onPressed: () => w.onFeedback('Accion ejecutada en fila #${i + 1}'),
-                    child: const Text('ACCION', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                  Expanded(
+                    child: Text(labelItem, style: const TextStyle(color: Colors.white, fontSize: 11.5)),
                   ),
+                  if (flujoItem.isNotEmpty)
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00FF66),
+                        foregroundColor: Colors.black,
+                      ),
+                      onPressed: () {
+                        EjecutorFlujosSdui.ejecutarCadena(
+                          context: context,
+                          flujoAcciones: flujoItem,
+                          onNavegar: w.onNavegar,
+                          onRecargarPantallas: w.onRecargar,
+                          onFeedback: w.onFeedback,
+                        );
+                      },
+                      child: Text(txtBtn, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                    ),
                 ],
               ),
             );

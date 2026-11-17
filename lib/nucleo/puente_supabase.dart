@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart' as crypto_pkg;
 import 'estado_global.dart';
 
 class PuenteSupabaseSdui {
-  static const String _defaultUrl = 'https://alxbydjpoxoavasklwpd.supabase.co';
+  static const String _defaultUrl = '[https://alxbydjpoxoavasklwpd.supabase.co](https://alxbydjpoxoavasklwpd.supabase.co)';
   static const String _defaultAnonKey = 'sb_publishable_Kc8wekwUqIs78ILNF-j-Qg_LNMYRhn0';
 
   static String supabaseUrl = _defaultUrl;
@@ -16,12 +16,12 @@ class PuenteSupabaseSdui {
   static String geminiApiKey = '';
 
   static File _archivoConfigSegura() {
-    return File('${Directory.systemTemp.path}/sdui_boveda_contexto_v3.json');
+    return File('${Directory.systemTemp.path}/sdui_boveda_contexto_v4.json');
   }
 
   static File _archivoCacheHive(String esq, String app) {
     final String hashKey = crypto_pkg.md5.convert(utf8.encode('${esq}_$app')).toString();
-    return File('${Directory.systemTemp.path}/sdui_hive_cache_$hashKey.json');
+    return File('${Directory.systemTemp.path}/sdui_hive_cache_v4_$hashKey.json');
   }
 
   static Future inicializarPuenteUniversal() async {
@@ -92,6 +92,21 @@ class PuenteSupabaseSdui {
     };
   }
 
+  static Map _normalizarPayloadJson(Map origen) {
+    final Map copia = Map.from(origen);
+    if (copia['p_datos'] is Map) {
+      final Map pDatos = Map.from(copia['p_datos'] as Map);
+      final dynamic rawArbol = pDatos['arbol_json'];
+      if (rawArbol is String && rawArbol.trim().isNotEmpty) {
+        try {
+          pDatos['arbol_json'] = jsonDecode(rawArbol.trim());
+        } catch (_) {}
+      }
+      copia['p_datos'] = pDatos;
+    }
+    return copia;
+  }
+
   static Future llamarRpcNano(
     String nombreRpc,
     Map parametros, {
@@ -99,12 +114,13 @@ class PuenteSupabaseSdui {
   }) async {
     final uri = Uri.parse('$supabaseUrl/rest/v1/rpc/$nombreRpc');
     final Map rawHeaders = _construirHeaders(esquemaOverride: esquemaOverride);
+    final Map payloadLimpio = _normalizarPayloadJson(parametros);
     try {
       final resp = await http
           .post(
             uri,
             headers: rawHeaders.map((k, v) => MapEntry(k.toString(), v.toString())),
-            body: jsonEncode(parametros),
+            body: jsonEncode(payloadLimpio),
           )
           .timeout(const Duration(seconds: 10));
 
@@ -141,7 +157,7 @@ class PuenteSupabaseSdui {
     final File fCache = _archivoCacheHive(esqObj, appObj);
 
     String hashLocal = '';
-    List pantallasCacheadas = [];
+    List? pantallasCacheadas;
 
     try {
       if (await fCache.exists()) {
@@ -164,11 +180,11 @@ class PuenteSupabaseSdui {
     );
 
     if (res['exito'] == true) {
-      if (res['sin_cambios'] == true && pantallasCacheadas.isNotEmpty) {
+      if (res['sin_cambios'] == true && pantallasCacheadas != null) {
         return pantallasCacheadas;
       }
 
-      if (res['pantallas'] is List && (res['pantallas'] as List).isNotEmpty) {
+      if (res['pantallas'] is List) {
         final List listaRemota = List.from(res['pantallas'] as List);
         final String nuevoHash = res['version_hash']?.toString() ?? '';
         try {
@@ -181,7 +197,7 @@ class PuenteSupabaseSdui {
       }
     }
 
-    if (pantallasCacheadas.isNotEmpty) {
+    if (pantallasCacheadas != null) {
       return pantallasCacheadas;
     }
 
@@ -206,7 +222,7 @@ class PuenteSupabaseSdui {
     if (geminiApiKey.isNotEmpty && promptUsuario.isNotEmpty) {
       try {
         final uriGem = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
+          '[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey)',
         );
         final rGem = await http
             .post(
@@ -222,12 +238,27 @@ class PuenteSupabaseSdui {
                 ]
               }),
             )
-            .timeout(const Duration(seconds: 12));
+            .timeout(const Duration(seconds: 15));
         if (rGem.statusCode == 200) {
           final Map dec = jsonDecode(rGem.body) as Map;
-          final String textoIa = dec.toString();
-          EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', textoIa);
-          return {'exito': true, 'respuesta_ia': textoIa, 'meta_rpc': meta};
+          String textoIa = dec.toString();
+          try {
+            final List cands = dec['candidates'] as List;
+            final Map content = (cands.first as Map)['content'] as Map;
+            final List parts = content['parts'] as List;
+            textoIa = (parts.first as Map)['text']?.toString() ?? textoIa;
+          } catch (_) {}
+          final String limpioJson = textoIa
+              .replaceAll('```json', '')
+              .replaceAll('```', '')
+              .trim();
+          EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', limpioJson, notificar: false);
+          if (limpioJson.startsWith('{')) {
+            EstadoGlobalSdui.instancia.escribirRuta('form.arbol_json_str', limpioJson, notificar: true);
+          } else {
+            EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', limpioJson, notificar: true);
+          }
+          return {'exito': true, 'respuesta_ia': limpioJson, 'meta_rpc': meta};
         }
       } catch (e) {
         EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', 'Error Gemini REST: $e');
@@ -263,110 +294,52 @@ class PuenteSupabaseSdui {
     return [
       {
         'app_id': appIdActivo,
-        'pantalla_id': 'P01_CONSOLA_MULTI_APP',
+        'pantalla_id': 'P00_CONEXION_BASE',
         'orden': 1,
-        'titulo': '1. Consola Multi-Esquema & Multi-App',
+        'titulo': 'P00 · Rescate de Conexion Base',
         'rol_requerido': 'TODOS',
-        'version_hash': 'local_v1',
+        'version_hash': 'rescate_v1',
         'arbol_json': {
           'type': 'column',
           'children': [
             {
               'type': 'card',
-              'titulo': 'SUPER-APK UNIVERSAL 100% SDUI (MOTOR AGNOSTICO)',
-              'subtitulo': 'Esquema: {{sistema.esquema_activo}} · App: {{sistema.app_id_activo}} · Ciclo: {{sistema.estado_ciclo_vida}}',
+              'titulo': 'MODO RESCATE OFFLINE (SIN CACHE LOCAL)',
+              'subtitulo': 'Esquema: {{sistema.esquema_activo}} · App: {{sistema.app_id_activo}}',
               'color_borde': '#00FF66',
               'children': [
                 {
                   'type': 'input',
-                  'campo': 'nuevo_esquema',
-                  'label': 'Cambiar Esquema PostgreSQL (esquema1, esquema2):',
+                  'campo': 'esquema',
+                  'label': 'Esquema PostgreSQL:',
                   'placeholder': 'esquema1'
                 },
                 {
                   'type': 'input',
-                  'campo': 'nueva_app_id',
-                  'label': 'Cambiar App ID Activa:',
+                  'campo': 'app_id',
+                  'label': 'App ID Activa:',
                   'placeholder': 'APP_UNIVERSAL_SDUI'
                 },
                 {
+                  'type': 'input',
+                  'campo': 'gemini_key',
+                  'label': 'Gemini API Key (Opcional):',
+                  'placeholder': 'AIza...'
+                },
+                {
                   'type': 'button',
-                  'texto': 'CONECTAR Y SINCRONIZAR DESDE SUPABASE',
+                  'texto': 'CAMBIAR_CONTEXTO_MULTI_APP',
                   'color': '#00FF66',
                   'flujo_acciones': [
                     {
                       'accion': 'CAMBIAR_CONTEXTO_MULTI_APP',
-                      'esquema': '{{form.nuevo_esquema}}',
-                      'app_id': '{{form.nueva_app_id}}'
+                      'esquema': '{{form.esquema}}',
+                      'app_id': '{{form.app_id}}',
+                      'gemini_key': '{{form.gemini_key}}'
                     }
                   ]
                 }
               ]
-            }
-          ]
-        }
-      },
-      {
-        'app_id': appIdActivo,
-        'pantalla_id': 'P02_MOTORES_COGNITIVOS',
-        'orden': 2,
-        'titulo': '2. Motores Cognitivos Parametricos',
-        'rol_requerido': 'TODOS',
-        'version_hash': 'local_v2',
-        'arbol_json': {
-          'type': 'column',
-          'children': [
-            {
-              'type': 'MOTOR_SECUENCIA_MEMORIA',
-              'juego_id': 'SEC_25_NUMS',
-              'titulo': '1. MOTOR_SECUENCIA_MEMORIA (25 Items)',
-              'items': ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25'],
-              'tiempo_muestra_ms': 900,
-              'intervalo_ms': 250,
-              'modo_ocultar': true
-            },
-            {
-              'type': 'MOTOR_PIZARRA_VEDICA',
-              'juego_id': 'VEDICA_CRUZADA',
-              'titulo': '2. MOTOR_PIZARRA_VEDICA (Derecha a Izquierda)',
-              'operando_a': 14,
-              'operando_b': 16,
-              'mostrar_guia_cruzada': true,
-              'direccion_escritura': 'DERECHA_A_IZQUIERDA'
-            },
-            {
-              'type': 'MOTOR_MATRIZ_Y_FISICA_2D',
-              'juego_id': 'MATRIZ_SCHULTE_50',
-              'titulo': '3. MOTOR_MATRIZ_Y_FISICA_2D (Schulte 16-50, Chimp, Sorter, AlphaRain)',
-              'dimension_n': 5,
-              'cantidad_numeros': 25
-            },
-            {
-              'type': 'MOTOR_AUDIO_VOZ_TONO',
-              'juego_id': 'VOZ_HZ_BOLSILLO',
-              'titulo': '4. MOTOR_AUDIO_VOZ_TONO (Frecuencia Hz + Voz Bolsillo)'
-            }
-          ]
-        }
-      },
-      {
-        'app_id': appIdActivo,
-        'pantalla_id': 'P03_HARDWARE_Y_LISTAS',
-        'orden': 3,
-        'titulo': '3. Bus Hardware, Wearables & Listas',
-        'rol_requerido': 'TODOS',
-        'version_hash': 'local_v3',
-        'arbol_json': {
-          'type': 'column',
-          'children': [
-            {
-              'type': 'BUS_HARDWARE_UNIVERSAL',
-              'titulo': 'BUS DE HARDWARE UNIVERSAL (QR, POS 80mm, OCR, GPS, 3D, IoT, Smartwatch)'
-            },
-            {
-              'type': 'listview',
-              'modo': 'catalogo_8_listas',
-              'titulo': 'CATALOGO DE LISTAS INTERACTIVAS CON BOTONES Y CURSOR TOP-10'
             }
           ]
         }
