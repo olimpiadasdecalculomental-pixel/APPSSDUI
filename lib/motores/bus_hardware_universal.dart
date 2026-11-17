@@ -21,9 +21,9 @@ class BusHardwareUniversal {
   static const MethodChannel _canalHardwareNativo = MethodChannel('com.logicasdui/hardware_bus');
   static final uuid_pkg.Uuid _uuid = const uuid_pkg.Uuid();
 
-  static Map<String, dynamic> verificar17PaquetesCompilados() {
+  static Map verificar17PaquetesCompilados() {
     const coordBase = LatLng(-17.9647, -67.1060);
-    final rutaDemo = p.join('sdui', 'bus_hardware');
+    final String rutaDemo = p.join('sdui', 'bus_hardware');
     return {
       'uuid_v4': _uuid.v4(),
       'ruta': rutaDemo,
@@ -35,7 +35,7 @@ class BusHardwareUniversal {
     };
   }
 
-  static double _calcularPitchAutocorrelacion(List<double> buffer, double sampleRate) {
+  static double _calcularPitchAutocorrelacion(List buffer, double sampleRate) {
     final int n = buffer.length;
     int mejorLag = 0;
     double maxCorr = -1.0;
@@ -45,7 +45,7 @@ class BusHardwareUniversal {
     for (int lag = minLag; lag <= math.min(maxLag, n ~/ 2); lag++) {
       double suma = 0.0;
       for (int i = 0; i < n - lag; i++) {
-        suma += buffer[i] * buffer[i + lag];
+        suma += ((buffer[i] as num).toDouble()) * ((buffer[i + lag] as num).toDouble());
       }
       if (suma > maxCorr) {
         maxCorr = suma;
@@ -55,9 +55,9 @@ class BusHardwareUniversal {
     return mejorLag > 0 ? (sampleRate / mejorLag) : 440.0;
   }
 
-  static Future> ejecutarComandoHardware({
+  static Future ejecutarComandoHardware({
     required String comando,
-    required Map<String, dynamic> argumentos,
+    required Map argumentos,
   }) async {
     final String cmd = comando.toUpperCase().trim();
     final estado = EstadoGlobalSdui.instancia;
@@ -81,7 +81,7 @@ class BusHardwareUniversal {
     if (cmd == 'DETECTAR_TONO_HZ') {
       final double freqEntrada =
           double.tryParse(argumentos['frecuencia_simulada']?.toString() ?? '440.0') ?? 440.0;
-      final List<double> bufferAudio = List<double>.generate(
+      final List bufferAudio = List.generate(
         2048,
         (i) => math.sin(2 * math.pi * freqEntrada * (i / 44100.0)),
       );
@@ -140,7 +140,7 @@ class BusHardwareUniversal {
     }
 
     await HapticFeedback.heavyImpact();
-    final Map<String, dynamic> reg = {
+    final Map reg = {
       'comando': cmd,
       'argumentos': argumentos,
       'fecha': DateTime.now().toIso8601String(),
@@ -162,7 +162,7 @@ class BusHardwareUniversal {
 }
 
 class BusHardwareUniversalWidget extends StatefulWidget {
-  final Map<String, dynamic> configJson;
+  final Map configJson;
   final void Function(String) onFeedback;
 
   const BusHardwareUniversalWidget({
@@ -172,10 +172,10 @@ class BusHardwareUniversalWidget extends StatefulWidget {
   });
 
   @override
-  State<BusHardwareUniversalWidget> createState() => _BusHardwareUniversalWidgetState();
+  State createState() => _BusHardwareUniversalWidgetState();
 }
 
-class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget> {
+class _BusHardwareUniversalWidgetState extends State {
   String _moduloActivo = 'QR_Y_ESCANER';
   bool _escanerAbierto = false;
   final String _dataQr = 'SDUI-UNIVERSAL-TOKEN-2026';
@@ -183,11 +183,12 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
   DateTime _diaCalendario = DateTime.now();
   final ScreenshotController _shotCtrl = ScreenshotController();
 
-  Future<void> _capturarQrPng() async {
+  Future _capturarQrPng() async {
+    final w = widget as BusHardwareUniversalWidget;
     try {
       final Uint8List? bytes = await _shotCtrl.capture();
       if (bytes != null) {
-        widget.onFeedback('Captura PNG generada (${(bytes.lengthInBytes / 1024).toStringAsFixed(1)} KB)');
+        w.onFeedback('Captura PNG generada (${(bytes.lengthInBytes / 1024).toStringAsFixed(1)} KB)');
       }
     } catch (_) {}
   }
@@ -195,9 +196,10 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
   @override
   Widget build(BuildContext context) {
     BusHardwareUniversal.verificar17PaquetesCompilados();
+    final w = widget as BusHardwareUniversalWidget;
     final estado = EstadoGlobalSdui.instancia;
     final String titulo =
-        widget.configJson['titulo']?.toString() ?? 'BUS DE HARDWARE UNIVERSAL Y WEARABLES';
+        w.configJson['titulo']?.toString() ?? 'BUS DE HARDWARE UNIVERSAL Y WEARABLES';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -290,7 +292,7 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
                       setState(() => _escanerAbierto = !_escanerAbierto);
                       if (_escanerAbierto) {
                         estado.escribirRuta('hardware.ultimo_qr', _dataQr);
-                        widget.onFeedback('Mira optica QR activa: $_dataQr');
+                        w.onFeedback('Mira optica QR activa: $_dataQr');
                       }
                     },
                   ),
@@ -341,12 +343,12 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
                     icon: const Icon(Icons.watch, size: 16),
                     label: const Text('SYNC SMARTWATCH', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
                     onPressed: () async {
-                      final r = await BusHardwareUniversal.ejecutarComandoHardware(
+                      final Map r = await BusHardwareUniversal.ejecutarComandoHardware(
                         comando: 'SINCRONIZAR_SMARTWATCH',
                         argumentos: {},
                       );
                       setState(() {});
-                      widget.onFeedback(r['mensaje']?.toString() ?? 'Sync OK');
+                      w.onFeedback(r['mensaje']?.toString() ?? 'Sync OK');
                     },
                   ),
                 ),
@@ -357,12 +359,12 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
                     icon: const Icon(Icons.mic, size: 16),
                     label: const Text('DETECTAR HZ (528 Hz)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900)),
                     onPressed: () async {
-                      final r = await BusHardwareUniversal.ejecutarComandoHardware(
+                      final Map r = await BusHardwareUniversal.ejecutarComandoHardware(
                         comando: 'DETECTAR_TONO_HZ',
                         argumentos: {'frecuencia_simulada': '528.0'},
                       );
                       setState(() {});
-                      widget.onFeedback(r['mensaje']?.toString() ?? 'Hz OK');
+                      w.onFeedback(r['mensaje']?.toString() ?? 'Hz OK');
                     },
                   ),
                 ),
@@ -405,7 +407,7 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
               selectedDayPredicate: (d) => isSameDay(_diaCalendario, d),
               onDaySelected: (sel, foc) {
                 setState(() => _diaCalendario = sel);
-                widget.onFeedback('Fecha seleccionada: ${sel.day}/${sel.month}/${sel.year}');
+                w.onFeedback('Fecha seleccionada: ${sel.day}/${sel.month}/${sel.year}');
               },
             ),
           ],
@@ -427,11 +429,11 @@ class _BusHardwareUniversalWidgetState extends State<BusHardwareUniversalWidget>
                     foregroundColor: Colors.black,
                   ),
                   onPressed: () async {
-                    final r = await BusHardwareUniversal.ejecutarComandoHardware(
+                    final Map r = await BusHardwareUniversal.ejecutarComandoHardware(
                       comando: b['cmd'].toString(),
                       argumentos: {},
                     );
-                    widget.onFeedback(r['mensaje']?.toString() ?? 'Ejecutado');
+                    w.onFeedback(r['mensaje']?.toString() ?? 'Ejecutado');
                   },
                   child: Text(b['lbl'].toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
                 );

@@ -9,7 +9,7 @@ import 'bus_hardware_universal.dart';
 
 class MotoresJuegosCognitivos extends StatefulWidget {
   final String tipoMotor;
-  final Map<String, dynamic> configJson;
+  final Map configJson;
   final void Function(String) onFeedback;
 
   const MotoresJuegosCognitivos({
@@ -20,10 +20,10 @@ class MotoresJuegosCognitivos extends StatefulWidget {
   });
 
   @override
-  State<MotoresJuegosCognitivos> createState() => _MotoresJuegosCognitivosState();
+  State createState() => _MotoresJuegosCognitivosState();
 }
 
-class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
+class _MotoresJuegosCognitivosState extends State
     with SingleTickerProviderStateMixin {
   final math.Random _rng = math.Random();
   late final ConfettiController _confettiCtrl;
@@ -35,35 +35,31 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   int _aciertos = 0;
   int _errores = 0;
 
-  // 1. Estado MOTOR_SECUENCIA_MEMORIA
-  List<String> _itemsSecuencia = [];
+  List _itemsSecuencia = [];
   int _idxMostrandoSecuencia = -1;
   bool _ocultandoSecuencia = false;
   final TextEditingController _ctrlRespuestaSecuencia = TextEditingController();
 
-  // 2. Estado MOTOR_PIZARRA_VEDICA (Escritura Derecha a Izquierda)
   int _operandoA = 14;
   int _operandoB = 16;
   bool _mostrarGuiaCruzada = true;
   String _direccionEscritura = 'DERECHA_A_IZQUIERDA';
   String _entradaPizarra = '';
 
-  // 3. Estado MOTOR_MATRIZ_Y_FISICA_2D (Schulte, Chimp, GridMemory, Sorter, Swipe, AlphaRain)
   String _subModoMatriz = 'SCHULTE_CHIMP';
   int _cantNumeros = 25;
   String _modoToqueSchulte = 'PRESIONAR';
-  List<int> _tableroNumeros = [];
+  List _tableroNumeros = [];
   int _objetivoActual = 1;
   bool _chimpOculto = false;
-  final Set<int> _patronMemoria = {0, 4, 8, 12};
-  final Set<int> _patronTocadas = {};
+  final Set _patronMemoria = {0, 4, 8, 12};
+  final Set _patronTocadas = {};
   bool _mostrandoPatronGrid = false;
   final String _itemArrastrable = 'Manzana (Saludable)';
   int _indiceSwipe = 0;
   String _objetivoRain = 'A-7';
-  final List<String> _capsulasRain = ['A-7', 'B-9', 'K-4', 'M-2', 'X-5', 'Z-1'];
+  final List _capsulasRain = ['A-7', 'B-9', 'K-4', 'M-2', 'X-5', 'Z-1'];
 
-  // 4. Estado MOTOR_AUDIO_VOZ_TONO (TTS, Diccion, Frecuencia Hz, Modo Bolsillo)
   double _frecuenciaHzDetectada = 440.0;
   String _clasificacionTono = 'LA4 (440 Hz · Tono Medio)';
   int _segundosBolsillo = 0;
@@ -95,14 +91,16 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   }
 
   void _alCambiarCicloVidaApp(String evento) {
+    final w = widget as MotoresJuegosCognitivos;
     if (evento == 'ON_APP_PAUSED' && _corriendo) {
       _errores++;
-      widget.onFeedback('Alerta Anti-Trampas: Pausa detectada durante la sesion.');
+      w.onFeedback('Alerta Anti-Trampas: Pausa detectada durante la sesion.');
     }
   }
 
   void _inicializarParametrosDesdeJson() {
-    final cfg = widget.configJson;
+    final w = widget as MotoresJuegosCognitivos;
+    final Map cfg = w.configJson;
     final rawItems = cfg['items'];
     if (rawItems is List && rawItems.isNotEmpty) {
       _itemsSecuencia = rawItems.map((e) => e.toString()).toList();
@@ -131,12 +129,13 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
     });
   }
 
-  Future<void> _evaluarJuegoEnServidor(String juegoId) async {
+  Future _evaluarJuegoEnServidor(String juegoId) async {
+    final w = widget as MotoresJuegosCognitivos;
     _corriendo = false;
     _timerPrincipal?.cancel();
     _confettiCtrl.play();
 
-    final res = await PuenteSupabaseSdui.llamarRpcNano(
+    final Map res = await PuenteSupabaseSdui.llamarRpcNano(
       'nano_evaluar_juego_o_examen',
       {
         'p_app_id': PuenteSupabaseSdui.appIdActivo,
@@ -152,7 +151,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
 
     final String msg = res['mensaje']?.toString() ??
         'Evaluado: $_aciertos aciertos en ${(_tiempoMs / 1000).toStringAsFixed(1)}s';
-    widget.onFeedback(msg);
+    w.onFeedback(msg);
     await BusHardwareUniversal.ejecutarComandoHardware(
       comando: 'HABLAR_TTS',
       argumentos: {'texto': msg},
@@ -160,11 +159,12 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   }
 
   void _iniciarSecuenciaMemoria() {
+    final w = widget as MotoresJuegosCognitivos;
     final int tMuestra =
-        int.tryParse(widget.configJson['tiempo_muestra_ms']?.toString() ?? '800') ?? 800;
+        int.tryParse(w.configJson['tiempo_muestra_ms']?.toString() ?? '800') ?? 800;
     final int tIntervalo =
-        int.tryParse(widget.configJson['intervalo_ms']?.toString() ?? '200') ?? 200;
-    final bool ocultar = widget.configJson['modo_ocultar'] != false;
+        int.tryParse(w.configJson['intervalo_ms']?.toString() ?? '200') ?? 200;
+    final bool ocultar = w.configJson['modo_ocultar'] != false;
 
     _iniciarCronometro();
     setState(() {
@@ -190,9 +190,10 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   }
 
   Widget _construirMotorSecuenciaMemoria() {
+    final w = widget as MotoresJuegosCognitivos;
     final String itemActual = (_idxMostrandoSecuencia >= 0 &&
             _idxMostrandoSecuencia < _itemsSecuencia.length)
-        ? _itemsSecuencia[_idxMostrandoSecuencia]
+        ? _itemsSecuencia[_idxMostrandoSecuencia].toString()
         : (_ocultandoSecuencia ? '¿RECUERDAS LA SECUENCIA?' : 'LISTO (${_itemsSecuencia.length} ITEMS)');
 
     return Column(
@@ -253,7 +254,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
                 onPressed: () {
                   _aciertos += 5;
                   _evaluarJuegoEnServidor(
-                    widget.configJson['juego_id']?.toString() ?? 'SEC_MEMORIA',
+                    w.configJson['juego_id']?.toString() ?? 'SEC_MEMORIA',
                   );
                 },
               ),
@@ -265,6 +266,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   }
 
   void _teclearDigitoPizarra(String digito) {
+    final w = widget as MotoresJuegosCognitivos;
     HapticFeedback.selectionClick();
     setState(() {
       if (_direccionEscritura == 'DERECHA_A_IZQUIERDA') {
@@ -277,7 +279,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
     final int esperado = _operandoA * _operandoB;
     if (int.tryParse(_entradaPizarra) == esperado) {
       _aciertos++;
-      _evaluarJuegoEnServidor(widget.configJson['juego_id']?.toString() ?? 'PIZARRA_VEDICA');
+      _evaluarJuegoEnServidor(w.configJson['juego_id']?.toString() ?? 'PIZARRA_VEDICA');
       setState(() {
         _operandoA = 11 + _rng.nextInt(19);
         _operandoB = 11 + _rng.nextInt(19);
@@ -377,7 +379,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   }
 
   void _prepararTableroSchulte({required bool iniciar}) {
-    final lista = List.generate(_cantNumeros, (i) => i + 1)..shuffle(_rng);
+    final List lista = List.generate(_cantNumeros, (i) => i + 1)..shuffle(_rng);
     setState(() {
       _tableroNumeros = lista;
       _objetivoActual = 1;
@@ -417,6 +419,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
   }
 
   Widget _construirMotorMatrizYFisica2D() {
+    final w = widget as MotoresJuegosCognitivos;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -496,7 +499,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
             ),
             itemCount: _tableroNumeros.length,
             itemBuilder: (ctx, i) {
-              final int val = _tableroNumeros[i];
+              final int val = (_tableroNumeros[i] as num).toInt();
               final bool hecho = _modoToqueSchulte != 'SOLO_MENTAL' && val < _objetivoActual;
               return InkWell(
                 onTap: () => _tocarCeldaSchulte(val),
@@ -567,7 +570,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              Draggable<String>(
+              Draggable(
                 data: _itemArrastrable,
                 feedback: Material(
                   color: Colors.transparent,
@@ -578,7 +581,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
                   label: Text('Arrastra: $_itemArrastrable', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                 ),
               ),
-              DragTarget<String>(
+              DragTarget(
                 onAcceptWithDetails: (d) {
                   _aciertos++;
                   _evaluarJuegoEnServidor('NUTRI_SORTER_DRAG');
@@ -601,7 +604,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
             onDismissed: (_) {
               setState(() => _indiceSwipe++);
               _aciertos++;
-              widget.onFeedback('Swipe V/F procesado (#$_indiceSwipe)');
+              w.onFeedback('Swipe V/F procesado (#$_indiceSwipe)');
             },
             child: Container(
               padding: const EdgeInsets.all(14),
@@ -633,7 +636,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
                 return Stack(
                   children: List.generate(_capsulasRain.length, (i) {
                     final double topPos = ((_fisicaCtrl.value + (i * 0.18)) % 1.0) * 100;
-                    final String cod = _capsulasRain[i];
+                    final String cod = _capsulasRain[i].toString();
                     return Positioned(
                       left: (i * 52.0) % 260,
                       top: topPos,
@@ -642,7 +645,7 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
                           if (cod == _objetivoRain) {
                             _aciertos++;
                             _capsulasRain.shuffle(_rng);
-                            setState(() => _objetivoRain = _capsulasRain.first);
+                            setState(() => _objetivoRain = _capsulasRain.first.toString());
                             _evaluarJuegoEnServidor('ALPHA_RAIN_2D');
                           }
                         },
@@ -667,8 +670,9 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
     );
   }
 
-  Future<void> _medirFrecuenciaHz() async {
-    final res = await BusHardwareUniversal.ejecutarComandoHardware(
+  Future _medirFrecuenciaHz() async {
+    final w = widget as MotoresJuegosCognitivos;
+    final Map res = await BusHardwareUniversal.ejecutarComandoHardware(
       comando: 'DETECTAR_TONO_HZ',
       argumentos: {},
     );
@@ -677,13 +681,14 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
       _frecuenciaHzDetectada = double.tryParse(res['frecuencia_hz']?.toString() ?? '440.0') ?? 440.0;
       _clasificacionTono = res['clasificacion']?.toString() ?? 'Tono Medio';
     });
-    widget.onFeedback('Frecuencia detectada: $_frecuenciaHzDetectada Hz ($_clasificacionTono)');
+    w.onFeedback('Frecuencia detectada: $_frecuenciaHzDetectada Hz ($_clasificacionTono)');
   }
 
   void _activarTemporizadorBolsillo(int segundos) {
+    final w = widget as MotoresJuegosCognitivos;
     _timerPrincipal?.cancel();
     setState(() => _segundosBolsillo = segundos);
-    widget.onFeedback('Modo Bolsillo: Hablara en $segundos segundos.');
+    w.onFeedback('Modo Bolsillo: Hablara en $segundos segundos.');
     _timerPrincipal = Timer.periodic(const Duration(seconds: 1), (t) async {
       if (_segundosBolsillo > 1) {
         if (mounted) {
@@ -771,7 +776,8 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
 
   @override
   Widget build(BuildContext context) {
-    final String titulo = widget.configJson['titulo']?.toString() ?? widget.tipoMotor;
+    final w = widget as MotoresJuegosCognitivos;
+    final String titulo = w.configJson['titulo']?.toString() ?? w.tipoMotor;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -803,10 +809,10 @@ class _MotoresJuegosCognitivosState extends State<MotoresJuegosCognitivos>
                 ],
               ),
               const SizedBox(height: 10),
-              if (widget.tipoMotor == 'MOTOR_SECUENCIA_MEMORIA') _construirMotorSecuenciaMemoria(),
-              if (widget.tipoMotor == 'MOTOR_PIZARRA_VEDICA') _construirMotorPizarraVedica(),
-              if (widget.tipoMotor == 'MOTOR_MATRIZ_Y_FISICA_2D') _construirMotorMatrizYFisica2D(),
-              if (widget.tipoMotor == 'MOTOR_AUDIO_VOZ_TONO') _construirMotorAudioVozTono(),
+              if (w.tipoMotor == 'MOTOR_SECUENCIA_MEMORIA') _construirMotorSecuenciaMemoria(),
+              if (w.tipoMotor == 'MOTOR_PIZARRA_VEDICA') _construirMotorPizarraVedica(),
+              if (w.tipoMotor == 'MOTOR_MATRIZ_Y_FISICA_2D') _construirMotorMatrizYFisica2D(),
+              if (w.tipoMotor == 'MOTOR_AUDIO_VOZ_TONO') _construirMotorAudioVozTono(),
             ],
           ),
           ConfettiWidget(

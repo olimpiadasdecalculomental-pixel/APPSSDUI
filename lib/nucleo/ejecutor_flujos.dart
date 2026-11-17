@@ -10,19 +10,18 @@ import 'puente_supabase.dart';
 import '../motores/bus_hardware_universal.dart';
 
 class EjecutorFlujosSdui {
-  static Future<void> ejecutarCadena({
+  static Future ejecutarCadena({
     required BuildContext context,
-    required List<dynamic> flujoAcciones,
+    required List flujoAcciones,
     void Function(String pantallaId)? onNavegar,
-    Future<void> Function()? onRecargarPantallas,
+    Future Function()? onRecargarPantallas,
     void Function(String feedback)? onFeedback,
   }) async {
     final estado = EstadoGlobalSdui.instancia;
 
     for (final pasoRaw in flujoAcciones) {
       if (pasoRaw is! Map) continue;
-      final Map<String, dynamic> paso =
-          Map<String, dynamic>.from(estado.interpolarEstructura(pasoRaw) as Map);
+      final Map paso = Map.from(estado.interpolarEstructura(pasoRaw) as Map);
       final String accion = (paso['accion']?.toString() ?? '').toUpperCase().trim();
 
       if (accion == 'VALIDAR_IF') {
@@ -109,8 +108,8 @@ class EjecutorFlujosSdui {
 
       if (accion == 'LLAMAR_RPC_NANO') {
         final String rpc = paso['rpc']?.toString() ?? 'nano_transaccion_atomica';
-        final Map<String, dynamic> params = paso['parametros'] is Map
-            ? Map<String, dynamic>.from(paso['parametros'] as Map)
+        final Map params = paso['parametros'] is Map
+            ? Map.from(paso['parametros'] as Map)
             : {
                 'p_app_id': PuenteSupabaseSdui.appIdActivo,
                 'p_operacion': paso['operacion']?.toString() ?? 'INSERTAR_DOCUMENTO',
@@ -118,7 +117,7 @@ class EjecutorFlujosSdui {
               };
         params.putIfAbsent('p_app_id', () => PuenteSupabaseSdui.appIdActivo);
 
-        final resRpc = await PuenteSupabaseSdui.llamarRpcNano(
+        final Map resRpc = await PuenteSupabaseSdui.llamarRpcNano(
           rpc,
           params,
           esquemaOverride: paso['esquema_override']?.toString(),
@@ -139,8 +138,8 @@ class EjecutorFlujosSdui {
 
       if (accion == 'LLAMAR_PUENTE_API_GEMINI') {
         final String apiId = paso['api_id']?.toString() ?? 'CONECTOR_GEMINI_PRO';
-        final Map<String, dynamic> payload = paso['payload'] is Map
-            ? Map<String, dynamic>.from(paso['payload'] as Map)
+        final Map payload = paso['payload'] is Map
+            ? Map.from(paso['payload'] as Map)
             : {
                 'prompt': paso['prompt']?.toString() ?? '',
                 'tipo_puente': paso['tipo_puente']?.toString() ?? '',
@@ -148,7 +147,7 @@ class EjecutorFlujosSdui {
                 'endpoint_url': paso['endpoint_url']?.toString() ?? '',
               };
 
-        final resApi = await PuenteSupabaseSdui.ejecutarPuenteApiYGemini(
+        final Map resApi = await PuenteSupabaseSdui.ejecutarPuenteApiYGemini(
           apiId: apiId,
           payload: payload,
         );
@@ -162,7 +161,7 @@ class EjecutorFlujosSdui {
 
       if (accion == 'EJECUTAR_HARDWARE') {
         final String comandoHw = paso['comando']?.toString() ?? 'HABLAR_TTS';
-        final Map<String, dynamic> resHw = await BusHardwareUniversal.ejecutarComandoHardware(
+        final Map resHw = await BusHardwareUniversal.ejecutarComandoHardware(
           comando: comandoHw,
           argumentos: paso,
         );
@@ -195,17 +194,19 @@ class EjecutorFlujosSdui {
     }
   }
 
-  static bool evaluarCondicionBooleana(String expresionStr, Map<String, dynamic> contexto) {
+  static bool evaluarCondicionBooleana(String expresionStr, Map contexto) {
     try {
       final expression = expr_pkg.Expression.parse(expresionStr);
       const evaluator = expr_pkg.ExpressionEvaluator();
-      final Map<String, dynamic> ctxPlano = {
-        ...contexto,
-        if (contexto['form'] is Map) ...(contexto['form'] as Map<String, dynamic>),
-        if (contexto['sistema'] is Map) ...(contexto['sistema'] as Map<String, dynamic>),
-        if (contexto['sesion'] is Map) ...(contexto['sesion'] as Map<String, dynamic>),
-      };
-      final resultado = evaluator.eval(expression, ctxPlano);
+      final Map ctxPlano = {};
+      contexto.forEach((k, v) => ctxPlano[k.toString()] = v);
+      if (contexto['form'] is Map) {
+        (contexto['form'] as Map).forEach((k, v) => ctxPlano[k.toString()] = v);
+      }
+      if (contexto['sistema'] is Map) {
+        (contexto['sistema'] as Map).forEach((k, v) => ctxPlano[k.toString()] = v);
+      }
+      final resultado = evaluator.eval(expression, ctxPlano.map((k, v) => MapEntry(k.toString(), v)));
       if (resultado is bool) return resultado;
       return resultado != null && resultado != false && resultado != 0 && resultado != '';
     } catch (_) {
@@ -231,13 +232,13 @@ class EjecutorFlujosSdui {
     }
   }
 
-  static Future<bool> _mostrarDialogoConfirmacionSiNo({
+  static Future _mostrarDialogoConfirmacionSiNo({
     required BuildContext context,
     required String titulo,
     required String pregunta,
     bool esDestructivo = false,
   }) async {
-    final res = await showDialog<bool>(
+    final res = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF0A1224),
@@ -275,9 +276,9 @@ class EjecutorFlujosSdui {
     return res == true;
   }
 
-  static Future<String> generarPdfNativo({
+  static Future generarPdfNativo({
     required String titulo,
-    required Map<String, dynamic> datos,
+    required Map datos,
   }) async {
     final doc = pw.Document();
     final estado = EstadoGlobalSdui.instancia;

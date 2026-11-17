@@ -11,12 +11,12 @@ class LienzoUniversalSdui extends StatefulWidget {
   const LienzoUniversalSdui({super.key});
 
   @override
-  State<LienzoUniversalSdui> createState() => _LienzoUniversalSduiState();
+  State createState() => _LienzoUniversalSduiState();
 }
 
-class _LienzoUniversalSduiState extends State<LienzoUniversalSdui> {
+class _LienzoUniversalSduiState extends State {
   final PageController _pageCtrl = PageController();
-  List> _pantallas = [];
+  List _pantallas = [];
   int _idxPantalla = 0;
   bool _cargando = true;
   String _toastFeedback = '';
@@ -43,9 +43,9 @@ class _LienzoUniversalSduiState extends State<LienzoUniversalSdui> {
     });
   }
 
-  Future<void> _sincronizarPantallas() async {
+  Future _sincronizarPantallas() async {
     if (mounted) setState(() => _cargando = true);
-    final lista = await PuenteSupabaseSdui.sincronizarPantallasConHash();
+    final List lista = await PuenteSupabaseSdui.sincronizarPantallasConHash();
     if (!mounted) return;
     setState(() {
       _pantallas = lista;
@@ -55,7 +55,7 @@ class _LienzoUniversalSduiState extends State<LienzoUniversalSdui> {
   }
 
   void _navegarAPantalla(String pantallaId) {
-    final idx = _pantallas.indexWhere((p) => p['pantalla_id']?.toString() == pantallaId);
+    final int idx = _pantallas.indexWhere((p) => (p as Map)['pantalla_id']?.toString() == pantallaId);
     if (idx >= 0 && _pageCtrl.hasClients) {
       HapticFeedback.selectionClick();
       _pageCtrl.animateToPage(
@@ -73,7 +73,7 @@ class _LienzoUniversalSduiState extends State<LienzoUniversalSdui> {
   Widget build(BuildContext context) {
     final estado = EstadoGlobalSdui.instancia;
     final String tituloActual = _pantallas.isNotEmpty
-        ? (_pantallas[_idxPantalla]['titulo']?.toString() ?? 'SDUI Universal')
+        ? ((_pantallas[_idxPantalla] as Map)['titulo']?.toString() ?? 'SDUI Universal')
         : 'Super-APK Universal SDUI';
 
     return Scaffold(
@@ -116,10 +116,10 @@ class _LienzoUniversalSduiState extends State<LienzoUniversalSdui> {
               itemCount: _pantallas.length,
               onPageChanged: (i) => setState(() => _idxPantalla = i),
               itemBuilder: (ctx, idx) {
-                final Map<String, dynamic> reg = _pantallas[idx];
-                final Map<String, dynamic> arbol = reg['arbol_json'] is Map
-                    ? Map<String, dynamic>.from(reg['arbol_json'] as Map)
-                    : <String, dynamic>{};
+                final Map reg = Map.from(_pantallas[idx] as Map);
+                final Map arbol = reg['arbol_json'] is Map
+                    ? Map.from(reg['arbol_json'] as Map)
+                    : {};
 
                 return RefreshIndicator(
                   color: const Color(0xFF00FF66),
@@ -175,10 +175,10 @@ class RenderizadorAtomicoSdui {
 
   static Widget construirNodo({
     required BuildContext context,
-    required Map<String, dynamic> nodoRaw,
+    required Map nodoRaw,
     required EstadoGlobalSdui estado,
     required void Function(String) onNavegar,
-    required Future<void> Function() onRecargar,
+    required Future Function() onRecargar,
     required void Function(String) onFeedback,
   }) {
     final String tipo = (nodoRaw['type']?.toString() ?? nodoRaw['tipo']?.toString() ?? 'card').trim();
@@ -210,10 +210,10 @@ class RenderizadorAtomicoSdui {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: hijosRaw
-              .whereType()
+              .map((e) => e as Map)
               .map((h) => construirNodo(
                     context: context,
-                    nodoRaw: Map<String, dynamic>.from(h),
+                    nodoRaw: Map.from(h),
                     estado: estado,
                     onNavegar: onNavegar,
                     onRecargar: onRecargar,
@@ -225,13 +225,13 @@ class RenderizadorAtomicoSdui {
       case 'row':
         return Row(
           children: hijosRaw
-              .whereType()
+              .map((e) => e as Map)
               .map((h) => Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: construirNodo(
                         context: context,
-                        nodoRaw: Map<String, dynamic>.from(h),
+                        nodoRaw: Map.from(h),
                         estado: estado,
                         onNavegar: onNavegar,
                         onRecargar: onRecargar,
@@ -245,10 +245,10 @@ class RenderizadorAtomicoSdui {
       case 'stack':
         return Stack(
           children: hijosRaw
-              .whereType()
+              .map((e) => e as Map)
               .map((h) => construirNodo(
                     context: context,
-                    nodoRaw: Map<String, dynamic>.from(h),
+                    nodoRaw: Map.from(h),
                     estado: estado,
                     onNavegar: onNavegar,
                     onRecargar: onRecargar,
@@ -349,15 +349,16 @@ class RenderizadorAtomicoSdui {
           mainAxisSpacing: 8,
           childAspectRatio: 1.2,
           children: hijosRaw
-              .whereType()
-              .map((h) => construirNodo(
-                    context: context,
-                    nodoRaw: Map<String, dynamic>.from(h),
-                    estado: estado,
-                    onNavegar: onNavegar,
-                    onRecargar: onRecargar,
-                    onFeedback: onFeedback,
-                  ))
+              .map((h) => h is Map
+                  ? construirNodo(
+                      context: context,
+                      nodoRaw: Map.from(h),
+                      estado: estado,
+                      onNavegar: onNavegar,
+                      onRecargar: onRecargar,
+                      onFeedback: onFeedback,
+                    )
+                  : const SizedBox.shrink())
               .toList(),
         );
 
@@ -377,15 +378,16 @@ class RenderizadorAtomicoSdui {
                 height: double.tryParse(nodoRaw['altura']?.toString() ?? '320') ?? 320,
                 child: TabBarView(
                   children: hijosRaw
-                      .whereType()
-                      .map((h) => construirNodo(
-                            context: context,
-                            nodoRaw: Map<String, dynamic>.from(h),
-                            estado: estado,
-                            onNavegar: onNavegar,
-                            onRecargar: onRecargar,
-                            onFeedback: onFeedback,
-                          ))
+                      .map((h) => h is Map
+                          ? construirNodo(
+                              context: context,
+                              nodoRaw: Map.from(h),
+                              estado: estado,
+                              onNavegar: onNavegar,
+                              onRecargar: onRecargar,
+                              onFeedback: onFeedback,
+                            )
+                          : const SizedBox.shrink())
                       .toList(),
                 ),
               ),
@@ -407,15 +409,16 @@ class RenderizadorAtomicoSdui {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: hijosRaw
-                        .whereType()
-                        .map((h) => construirNodo(
-                              context: ctx,
-                              nodoRaw: Map<String, dynamic>.from(h),
-                              estado: estado,
-                              onNavegar: onNavegar,
-                              onRecargar: onRecargar,
-                              onFeedback: onFeedback,
-                            ))
+                        .map((h) => h is Map
+                            ? construirNodo(
+                                context: ctx,
+                                nodoRaw: Map.from(h),
+                                estado: estado,
+                                onNavegar: onNavegar,
+                                onRecargar: onRecargar,
+                                onFeedback: onFeedback,
+                              )
+                            : const SizedBox.shrink())
                         .toList(),
                   ),
                 ),
@@ -426,11 +429,6 @@ class RenderizadorAtomicoSdui {
         );
 
       case 'chart':
-        final List puntosRaw = (nodoRaw['puntos'] as List?) ?? [1.5, 2.8, 2.3, 4.5, 3.9, 6.2];
-        final List<FlSpot> spots = List.generate(
-          puntosRaw.length,
-          (i) => FlSpot(i.toDouble(), double.tryParse(puntosRaw[i].toString()) ?? 1.0),
-        );
         return Container(
           height: 190,
           margin: const EdgeInsets.only(bottom: 12),
@@ -447,7 +445,14 @@ class RenderizadorAtomicoSdui {
               borderData: FlBorderData(show: true),
               lineBarsData: [
                 LineChartBarData(
-                  spots: spots,
+                  spots: const [
+                    FlSpot(0, 1.5),
+                    FlSpot(1, 2.8),
+                    FlSpot(2, 2.3),
+                    FlSpot(3, 4.5),
+                    FlSpot(4, 3.9),
+                    FlSpot(5, 6.2),
+                  ],
                   isCurved: true,
                   color: const Color(0xFF00FF66),
                   barWidth: 3,
@@ -480,14 +485,16 @@ class RenderizadorAtomicoSdui {
                   padding: const EdgeInsets.only(top: 4, bottom: 10),
                   child: Text(sub, style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
                 ),
-              ...hijosRaw.whereType().map((h) => construirNodo(
-                    context: context,
-                    nodoRaw: Map<String, dynamic>.from(h),
-                    estado: estado,
-                    onNavegar: onNavegar,
-                    onRecargar: onRecargar,
-                    onFeedback: onFeedback,
-                  )),
+              ...hijosRaw.map((h) => h is Map
+                  ? construirNodo(
+                      context: context,
+                      nodoRaw: Map.from(h),
+                      estado: estado,
+                      onNavegar: onNavegar,
+                      onRecargar: onRecargar,
+                      onFeedback: onFeedback,
+                    )
+                  : const SizedBox.shrink()),
             ],
           ),
         );
@@ -496,10 +503,10 @@ class RenderizadorAtomicoSdui {
 }
 
 class _ListaAtomicaUniversalWidget extends StatefulWidget {
-  final Map<String, dynamic> nodoRaw;
+  final Map nodoRaw;
   final void Function(String) onFeedback;
   final void Function(String) onNavegar;
-  final Future<void> Function() onRecargar;
+  final Future Function() onRecargar;
 
   const _ListaAtomicaUniversalWidget({
     required this.nodoRaw,
@@ -509,37 +516,39 @@ class _ListaAtomicaUniversalWidget extends StatefulWidget {
   });
 
   @override
-  State<_ListaAtomicaUniversalWidget> createState() => _ListaAtomicaUniversalWidgetState();
+  State createState() => _ListaAtomicaUniversalWidgetState();
 }
 
-class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidget> {
-  List> _itemsRemotos = [];
+class _ListaAtomicaUniversalWidgetState extends State {
+  List _itemsRemotos = [];
   String? _siguienteCursor;
   bool _cargandoTop10 = false;
   int _tipoListaDemo = 0;
-  final Map<int, int> _cantidadesStepper = {0: 2, 1: 1, 2: 3};
-  final Set<int> _checksActivos = {0, 2};
-  final Map<int, bool> _switchesActivos = {0: true, 1: false, 2: true};
-  String _radioSeleccionado = 'OPCION_A';
+  final Map _cantidadesStepper = {0: 2, 1: 1, 2: 3};
+  final Set _checksActivos = {0, 2};
+  final Map _switchesActivos = {0: true, 1: false, 2: true};
+  String _radioSeleccionado = 'OPCION_1';
 
   @override
   void initState() {
     super.initState();
-    final String modo = widget.nodoRaw['modo']?.toString() ?? 'estatico';
+    final Map nodo = (widget as _ListaAtomicaUniversalWidget).nodoRaw;
+    final String modo = nodo['modo']?.toString() ?? 'estatico';
     if (modo == 'cursor_top10') {
       _consultarCursorTop10(reiniciar: true);
     }
   }
 
-  Future<void> _consultarCursorTop10({bool reiniciar = false}) async {
+  Future _consultarCursorTop10({bool reiniciar = false}) async {
     setState(() => _cargandoTop10 = true);
-    final String col = widget.nodoRaw['coleccion']?.toString() ?? 'RECORDS_COGNITIVOS';
-    final res = await PuenteSupabaseSdui.llamarRpcNano(
+    final Map nodo = (widget as _ListaAtomicaUniversalWidget).nodoRaw;
+    final String col = nodo['coleccion']?.toString() ?? 'RECORDS_COGNITIVOS';
+    final Map res = await PuenteSupabaseSdui.llamarRpcNano(
       'nano_buscar_top10',
       {
         'p_app_id': PuenteSupabaseSdui.appIdActivo,
         'p_coleccion': col,
-        'p_filtro': widget.nodoRaw['filtro'] ?? {},
+        'p_filtro': nodo['filtro'] ?? {},
         'p_cursor_fecha': reiniciar ? null : _siguienteCursor,
       },
     );
@@ -547,7 +556,7 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
     setState(() {
       _cargandoTop10 = false;
       if (res['items'] is List) {
-        _itemsRemotos = (res['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        _itemsRemotos = List.from(res['items'] as List);
         _siguienteCursor = res['siguiente_cursor']?.toString();
       }
     });
@@ -555,11 +564,12 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
 
   @override
   Widget build(BuildContext context) {
-    final String modo = widget.nodoRaw['modo']?.toString() ?? 'catalogo_8_listas';
-    final String titulo = widget.nodoRaw['titulo']?.toString() ?? 'Lista Universal SDUI';
+    final w = widget as _ListaAtomicaUniversalWidget;
+    final String modo = w.nodoRaw['modo']?.toString() ?? 'catalogo_8_listas';
+    final String titulo = w.nodoRaw['titulo']?.toString() ?? 'Lista Universal SDUI';
 
     if (modo == 'vertical_paging') {
-      final List items = (widget.nodoRaw['items'] as List?) ??
+      final List items = (w.nodoRaw['items'] as List?) ??
           ['Reel SDUI #1 (Vertical Paging)', 'Reel SDUI #2 (TikTok Feed)', 'Reel SDUI #3 (Stream 9:16)'];
       return Container(
         height: 260,
@@ -617,15 +627,18 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
                 child: Text('Sin registros en esta coleccion aun.', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
               )
             else
-              ..._itemsRemotos.map((it) => Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: const Color(0xFF142033), borderRadius: BorderRadius.circular(8)),
-                    child: Text(
-                      '${it['propietario_id'] ?? 'ID'} · [${it['estado']}] · ${it['datos']}',
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                  )),
+              ..._itemsRemotos.map((rawIt) {
+                final Map it = rawIt is Map ? rawIt : {};
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFF142033), borderRadius: BorderRadius.circular(8)),
+                  child: Text(
+                    '${it['propietario_id'] ?? 'ID'} · [${it['estado']}] · ${it['datos']}',
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                );
+              }),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -684,13 +697,13 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
           ),
           const SizedBox(height: 6),
           Text(
-            nombresTecnicos[_tipoListaDemo],
+            nombresTecnicos[_tipoListaDemo].toString(),
             style: const TextStyle(color: Color(0xFF00F3FF), fontSize: 11.5, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
           ),
           const SizedBox(height: 8),
           ...List.generate(3, (i) {
             if (_tipoListaDemo == 1) {
-              final int cant = _cantidadesStepper[i] ?? 1;
+              final int cant = (_cantidadesStepper[i] as int?) ?? 1;
               return ListTile(
                 dense: true,
                 title: Text('Item Inventario #${i + 1} (Stepper)', style: const TextStyle(color: Colors.white, fontSize: 12)),
@@ -717,7 +730,7 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
             if (_tipoListaDemo == 3) {
               return SwitchListTile(
                 dense: true,
-                value: _switchesActivos[i] ?? false,
+                value: (_switchesActivos[i] as bool?) ?? false,
                 activeColor: const Color(0xFF00FF66),
                 title: Text('Permiso / Sensor Activo #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
                 onChanged: (v) => setState(() => _switchesActivos[i] = v),
@@ -725,13 +738,13 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
             }
             if (_tipoListaDemo == 4) {
               final String valOp = 'OPCION_${i + 1}';
-              return RadioListTile<String>(
+              return RadioListTile(
                 dense: true,
                 value: valOp,
                 groupValue: _radioSeleccionado,
                 activeColor: const Color(0xFF00F3FF),
                 title: Text('Opcion Exclusiva #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                onChanged: (v) => setState(() => _radioSeleccionado = v ?? valOp),
+                onChanged: (v) => setState(() => _radioSeleccionado = v?.toString() ?? valOp),
               );
             }
             if (_tipoListaDemo == 5) {
@@ -741,7 +754,7 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
                   Padding(
                     padding: const EdgeInsets.all(8),
                     child: ElevatedButton(
-                      onPressed: () => widget.onFeedback('Sub-accion ejecutada en fila #${i + 1}'),
+                      onPressed: () => w.onFeedback('Sub-accion ejecutada en fila #${i + 1}'),
                       child: const Text('EJECUTAR SUB-ACCION'),
                     ),
                   ),
@@ -755,11 +768,10 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Fila Interactiva #${i + 1} (${nombresTecnicos[_tipoListaDemo].split(" ").first})',
-                      style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+                  Text('Fila Interactiva #${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 11.5)),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00FF66), foregroundColor: Colors.black),
-                    onPressed: () => widget.onFeedback('Accion ejecutada en fila #${i + 1}'),
+                    onPressed: () => w.onFeedback('Accion ejecutada en fila #${i + 1}'),
                     child: const Text('ACCION', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
                   ),
                 ],

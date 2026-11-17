@@ -8,9 +8,9 @@ class EstadoGlobalSdui extends ChangeNotifier {
   }
 
   AppLifecycleListener? _lifecycleListener;
-  final List<void Function(String evento)> _subscriptoresLifecycle = [];
+  final List _subscriptoresLifecycle = [];
 
-  final Map<String, dynamic> _almacen = {
+  final Map _almacen = {
     'sistema': {
       'esquema_activo': 'esquema1',
       'app_id_activo': 'APP_UNIVERSAL_SDUI',
@@ -19,26 +19,26 @@ class EstadoGlobalSdui extends ChangeNotifier {
       'modo_offline': false,
       'ultimo_mensaje': 'Motor SDUI Universal listo.',
     },
-    'form': <String, dynamic>{},
-    'sesion': <String, dynamic>{
+    'form': {},
+    'sesion': {
       'usuario_id': 'USR_ANONIMO',
       'rol': 'TODOS',
     },
-    'hardware': <String, dynamic>{
+    'hardware': {
       'ultimo_qr': '',
-      'frecuencia_hz': 0.0,
-      'pasos_smartwatch': 0,
-      'bpm_cardiaco': 0,
-      'gps_lat': -17.7833,
-      'gps_lng': -63.1821,
+      'frecuencia_hz': 440.0,
+      'pasos_smartwatch': 4850,
+      'bpm_cardiaco': 74,
+      'gps_lat': -17.9647,
+      'gps_lng': -67.1060,
     },
-    'ia': <String, dynamic>{
+    'ia': {
       'ultima_respuesta_gemini': '',
       'ultimo_puente_api': '',
     },
   };
 
-  Map<String, dynamic> get almacenCompleto => _almacen;
+  Map get almacenCompleto => _almacen;
 
   void _inicializarLifecycleListener() {
     _lifecycleListener = AppLifecycleListener(
@@ -50,13 +50,13 @@ class EstadoGlobalSdui extends ChangeNotifier {
   }
 
   void _dispararEventoCicloVida(String nombreEvento) {
-    final sis = (_almacen['sistema'] as Map<String, dynamic>);
+    final Map sis = _almacen['sistema'] as Map;
     sis['estado_ciclo_vida'] = nombreEvento;
     if (nombreEvento == 'ON_APP_PAUSED') {
       sis['contador_pausas'] = ((sis['contador_pausas'] as int?) ?? 0) + 1;
     }
     for (final fn in _subscriptoresLifecycle) {
-      fn(nombreEvento);
+      (fn as Function(String))(nombreEvento);
     }
     notifyListeners();
   }
@@ -72,7 +72,7 @@ class EstadoGlobalSdui extends ChangeNotifier {
   }
 
   dynamic leerRuta(String ruta) {
-    final partes = ruta.trim().split('.');
+    final List partes = ruta.trim().split('.');
     dynamic actual = _almacen;
     for (final p in partes) {
       if (actual is Map && actual.containsKey(p)) {
@@ -85,17 +85,17 @@ class EstadoGlobalSdui extends ChangeNotifier {
   }
 
   void escribirRuta(String ruta, dynamic valor, {bool notificar = true}) {
-    final partes = ruta.trim().split('.');
+    final List partes = ruta.trim().split('.');
     if (partes.isEmpty) return;
-    Map<String, dynamic> actual = _almacen;
+    Map actual = _almacen;
     for (int i = 0; i < partes.length - 1; i++) {
-      final clave = partes[i];
-      if (actual[clave] is! Map<String, dynamic>) {
-        actual[clave] = <String, dynamic>{};
+      final String clave = partes[i].toString();
+      if (actual[clave] is! Map) {
+        actual[clave] = {};
       }
-      actual = actual[clave] as Map<String, dynamic>;
+      actual = actual[clave] as Map;
     }
-    actual[partes.last] = valor;
+    actual[partes.last.toString()] = valor;
     if (notificar) {
       notifyListeners();
     }
@@ -105,7 +105,7 @@ class EstadoGlobalSdui extends ChangeNotifier {
     if (!plantilla.contains('{{')) return plantilla;
     final reg = RegExp(r'\{\{\s*([a-zA-Z0-9_.\-]+)\s*\}\}');
     return plantilla.replaceAllMapped(reg, (match) {
-      final ruta = match.group(1) ?? '';
+      final String ruta = match.group(1) ?? '';
       final val = leerRuta(ruta);
       return val != null ? val.toString() : '';
     });
@@ -115,7 +115,7 @@ class EstadoGlobalSdui extends ChangeNotifier {
     if (nodo is String) {
       return interpolarTexto(nodo);
     } else if (nodo is Map) {
-      final Map<String, dynamic> resultado = {};
+      final Map resultado = {};
       nodo.forEach((k, v) {
         resultado[k.toString()] = interpolarEstructura(v);
       });

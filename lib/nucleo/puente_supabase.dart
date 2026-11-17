@@ -20,11 +20,11 @@ class PuenteSupabaseSdui {
   }
 
   static File _archivoCacheHive(String esq, String app) {
-    final hashKey = crypto_pkg.md5.convert(utf8.encode('${esq}_$app')).toString();
+    final String hashKey = crypto_pkg.md5.convert(utf8.encode('${esq}_$app')).toString();
     return File('${Directory.systemTemp.path}/sdui_hive_cache_$hashKey.json');
   }
 
-  static Future<void> inicializarPuenteUniversal() async {
+  static Future inicializarPuenteUniversal() async {
     try {
       final f = _archivoConfigSegura();
       if (await f.exists()) {
@@ -51,7 +51,7 @@ class PuenteSupabaseSdui {
     EstadoGlobalSdui.instancia.escribirRuta('sistema.app_id_activo', appIdActivo, notificar: true);
   }
 
-  static Future<void> cambiarContextoMultiApp({
+  static Future cambiarContextoMultiApp({
     required String nuevoEsquema,
     required String nuevaAppId,
     String? nuevaUrl,
@@ -79,7 +79,7 @@ class PuenteSupabaseSdui {
     EstadoGlobalSdui.instancia.escribirRuta('sistema.app_id_activo', appIdActivo, notificar: true);
   }
 
-  static Map<String, String> _construirHeaders({String? esquemaOverride}) {
+  static Map _construirHeaders({String? esquemaOverride}) {
     final String perfil = (esquemaOverride != null && esquemaOverride.trim().isNotEmpty)
         ? esquemaOverride.trim()
         : esquemaActivo;
@@ -92,17 +92,18 @@ class PuenteSupabaseSdui {
     };
   }
 
-  static Future> llamarRpcNano(
+  static Future llamarRpcNano(
     String nombreRpc,
-    Map<String, dynamic> parametros, {
+    Map parametros, {
     String? esquemaOverride,
   }) async {
     final uri = Uri.parse('$supabaseUrl/rest/v1/rpc/$nombreRpc');
+    final Map rawHeaders = _construirHeaders(esquemaOverride: esquemaOverride);
     try {
       final resp = await http
           .post(
             uri,
-            headers: _construirHeaders(esquemaOverride: esquemaOverride),
+            headers: rawHeaders.map((k, v) => MapEntry(k.toString(), v.toString())),
             body: jsonEncode(parametros),
           )
           .timeout(const Duration(seconds: 10));
@@ -111,8 +112,8 @@ class PuenteSupabaseSdui {
         EstadoGlobalSdui.instancia.escribirRuta('sistema.modo_offline', false, notificar: false);
         if (resp.body.isEmpty) return {'exito': true};
         final decoded = jsonDecode(resp.body);
-        if (decoded is Map<String, dynamic>) {
-          return decoded;
+        if (decoded is Map) {
+          return Map.from(decoded);
         }
         return {'exito': true, 'datos': decoded};
       }
@@ -131,7 +132,7 @@ class PuenteSupabaseSdui {
     }
   }
 
-  static Future<List>> sincronizarPantallasConHash({
+  static Future sincronizarPantallasConHash({
     String? appOverride,
     String? esquemaOverride,
   }) async {
@@ -140,21 +141,19 @@ class PuenteSupabaseSdui {
     final File fCache = _archivoCacheHive(esqObj, appObj);
 
     String hashLocal = '';
-    List> pantallasCacheadas = [];
+    List pantallasCacheadas = [];
 
     try {
       if (await fCache.exists()) {
         final Map cacheObj = jsonDecode(await fCache.readAsString()) as Map;
         hashLocal = cacheObj['version_hash']?.toString() ?? '';
         if (cacheObj['pantallas'] is List) {
-          pantallasCacheadas = (cacheObj['pantallas'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
+          pantallasCacheadas = List.from(cacheObj['pantallas'] as List);
         }
       }
     } catch (_) {}
 
-    final res = await llamarRpcNano(
+    final Map res = await llamarRpcNano(
       'nano_leer_pantalla',
       {
         'p_app_id': appObj,
@@ -170,17 +169,15 @@ class PuenteSupabaseSdui {
       }
 
       if (res['pantallas'] is List && (res['pantallas'] as List).isNotEmpty) {
-        final List listaRemota = res['pantallas'] as List;
-        final List> pantallasTipadas =
-            listaRemota.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final List listaRemota = List.from(res['pantallas'] as List);
         final String nuevoHash = res['version_hash']?.toString() ?? '';
         try {
           await fCache.writeAsString(jsonEncode({
             'version_hash': nuevoHash,
-            'pantallas': pantallasTipadas,
+            'pantallas': listaRemota,
           }));
         } catch (_) {}
-        return pantallasTipadas;
+        return listaRemota;
       }
     }
 
@@ -191,11 +188,11 @@ class PuenteSupabaseSdui {
     return _semillaLocalEmergencia();
   }
 
-  static Future> ejecutarPuenteApiYGemini({
+  static Future ejecutarPuenteApiYGemini({
     required String apiId,
-    required Map<String, dynamic> payload,
+    required Map payload,
   }) async {
-    final meta = await llamarRpcNano(
+    final Map meta = await llamarRpcNano(
       'nano_puente_api_y_gemini',
       {
         'p_app_id': appIdActivo,
@@ -227,9 +224,8 @@ class PuenteSupabaseSdui {
             )
             .timeout(const Duration(seconds: 12));
         if (rGem.statusCode == 200) {
-          final dec = jsonDecode(rGem.body) as Map;
-          final textoIa = dec['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ??
-              'Respuesta generada por Gemini.';
+          final Map dec = jsonDecode(rGem.body) as Map;
+          final String textoIa = dec.toString();
           EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', textoIa);
           return {'exito': true, 'respuesta_ia': textoIa, 'meta_rpc': meta};
         }
@@ -263,7 +259,7 @@ class PuenteSupabaseSdui {
     return {'exito': true, 'mensaje': resumen, 'meta': meta};
   }
 
-  static List> _semillaLocalEmergencia() {
+  static List _semillaLocalEmergencia() {
     return [
       {
         'app_id': appIdActivo,
