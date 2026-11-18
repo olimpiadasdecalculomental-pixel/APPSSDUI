@@ -106,6 +106,62 @@ class EjecutorFlujosSdui {
         continue;
       }
 
+      if (accion == 'EJECUTAR_REGLA_SQL' || accion == 'NANO_EJECUTAR_REGLA') {
+        final String reglaId = paso['regla_id']?.toString() ?? '';
+        final Map payload = paso['payload'] is Map
+            ? Map.from(paso['payload'] as Map)
+            : Map.from((estado.leerRuta('form') as Map?) ?? {});
+
+        final Map resRegla = await PuenteSupabaseSdui.llamarRpcNano(
+          'nano_ejecutar_regla',
+          {
+            'p_app_id': paso['app_id']?.toString() ?? PuenteSupabaseSdui.appIdActivo,
+            'p_regla_id': reglaId,
+            'p_payload': payload,
+          },
+          esquemaOverride: paso['esquema_override']?.toString(),
+        );
+
+        final String rutaGuardar =
+            paso['guardar_respuesta_en']?.toString() ?? 'sistema.ultima_regla_sql';
+        estado.escribirRuta(rutaGuardar, resRegla, notificar: false);
+
+        if (resRegla['exito'] == true) {
+          if (resRegla['usuario_id'] != null) {
+            estado.escribirRuta('sesion.usuario_id', resRegla['usuario_id'].toString(), notificar: false);
+          }
+          if (resRegla['nombre'] != null) {
+            estado.escribirRuta('sesion.nombre', resRegla['nombre'].toString(), notificar: false);
+          }
+          if (resRegla['rol'] != null) {
+            estado.escribirRuta('sesion.rol', resRegla['rol'].toString(), notificar: false);
+          }
+          if (resRegla['foto_url'] != null) {
+            estado.escribirRuta('sesion.foto_url', resRegla['foto_url'].toString(), notificar: false);
+          }
+          if (resRegla['token_entrada'] != null) {
+            estado.escribirRuta('sesion.token_entrada', resRegla['token_entrada'].toString(), notificar: false);
+          }
+          if (resRegla['token_salida'] != null) {
+            estado.escribirRuta('sesion.token_salida', resRegla['token_salida'].toString(), notificar: false);
+            estado.escribirRuta('sesion.rol', 'TODOS', notificar: false);
+          }
+        }
+
+        final String msgRegla =
+            resRegla['mensaje']?.toString() ?? 'Regla SQL [$reglaId] ejecutada.';
+        estado.escribirRuta('sistema.ultimo_mensaje', msgRegla, notificar: true);
+        onFeedback?.call(msgRegla);
+
+        if (resRegla['exito'] == false && paso['detener_si_error'] != false) {
+          return;
+        }
+        if (paso['recargar_pantallas'] == true) {
+          await onRecargarPantallas?.call();
+        }
+        continue;
+      }
+
       if (accion == 'LLAMAR_RPC_NANO') {
         final String rpc = paso['rpc']?.toString() ?? 'nano_transaccion_atomica';
         final Map params = paso['parametros'] is Map
@@ -123,7 +179,8 @@ class EjecutorFlujosSdui {
           esquemaOverride: paso['esquema_override']?.toString(),
         );
 
-        final String rutaResp = paso['guardar_respuesta_en']?.toString() ?? 'sistema.ultima_respuesta_rpc';
+        final String rutaResp =
+            paso['guardar_respuesta_en']?.toString() ?? 'sistema.ultima_respuesta_rpc';
         estado.escribirRuta(rutaResp, resRpc);
 
         final String msg = resRpc['mensaje']?.toString() ?? 'RPC [$rpc] ejecutado.';
@@ -165,14 +222,16 @@ class EjecutorFlujosSdui {
           comando: comandoHw,
           argumentos: paso,
         );
-        final String msgHw = resHw['mensaje']?.toString() ?? 'Hardware [$comandoHw] ejecutado.';
+        final String msgHw =
+            resHw['mensaje']?.toString() ?? 'Hardware [$comandoHw] ejecutado.';
         estado.escribirRuta('sistema.ultimo_mensaje', msgHw);
         onFeedback?.call(msgHw);
         continue;
       }
 
       if (accion == 'EXPORTAR_PDF') {
-        final String tituloPdf = paso['titulo']?.toString() ?? 'Reporte Oficial Super-APK SDUI';
+        final String tituloPdf =
+            paso['titulo']?.toString() ?? 'Reporte Oficial Super-APK SDUI';
         final String rutaPdf = await generarPdfNativo(titulo: tituloPdf, datos: paso);
         onFeedback?.call('PDF generado: $rutaPdf');
         continue;
@@ -206,7 +265,13 @@ class EjecutorFlujosSdui {
       if (contexto['sistema'] is Map) {
         (contexto['sistema'] as Map).forEach((k, v) => ctxPlano[k.toString()] = v);
       }
-      final resultado = evaluator.eval(expression, ctxPlano.map((k, v) => MapEntry(k.toString(), v)));
+      if (contexto['sesion'] is Map) {
+        (contexto['sesion'] as Map).forEach((k, v) => ctxPlano[k.toString()] = v);
+      }
+      final resultado = evaluator.eval(
+        expression,
+        ctxPlano.map((k, v) => MapEntry(k.toString(), v)),
+      );
       if (resultado is bool) return resultado;
       return resultado != null && resultado != false && resultado != 0 && resultado != '';
     } catch (_) {
@@ -251,7 +316,11 @@ class EjecutorFlujosSdui {
         ),
         title: Text(
           titulo,
-          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
         ),
         content: Text(
           pregunta,
@@ -264,11 +333,15 @@ class EjecutorFlujosSdui {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: esDestructivo ? const Color(0xFFFF4D4D) : const Color(0xFF00FF66),
+              backgroundColor:
+                  esDestructivo ? const Color(0xFFFF4D4D) : const Color(0xFF00FF66),
               foregroundColor: esDestructivo ? Colors.white : Colors.black,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('SI, CONFIRMAR', style: TextStyle(fontWeight: FontWeight.w900)),
+            child: const Text(
+              'SI, CONFIRMAR',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
           ),
         ],
       ),
@@ -323,7 +396,9 @@ class EjecutorFlujosSdui {
       ),
     );
     final bytes = await doc.save();
-    final f = File('${Directory.systemTemp.path}/reporte_sdui_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    final f = File(
+      '${Directory.systemTemp.path}/reporte_sdui_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    );
     await f.writeAsBytes(bytes);
     return '${f.path} (${(bytes.length / 1024).toStringAsFixed(1)} KB)';
   }

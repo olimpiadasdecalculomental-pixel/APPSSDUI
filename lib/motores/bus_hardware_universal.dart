@@ -21,7 +21,7 @@ class BusHardwareUniversal {
   static const MethodChannel _canalHardwareNativo = MethodChannel('com.logicasdui/hardware_bus');
   static final uuid_pkg.Uuid _uuid = const uuid_pkg.Uuid();
 
-  static Map verificar17PaquetesCompilados() {
+  static Map verificarPaquetesCompilados() {
     const coordBase = LatLng(-17.9647, -67.1060);
     final String rutaDemo = p.join('sdui', 'bus_hardware');
     return {
@@ -59,7 +59,7 @@ class BusHardwareUniversal {
     required String comando,
     required Map argumentos,
   }) async {
-    verificar17PaquetesCompilados();
+    verificarPaquetesCompilados();
     final String cmd = comando.toUpperCase().trim();
     final estado = EstadoGlobalSdui.instancia;
 
@@ -67,7 +67,16 @@ class BusHardwareUniversal {
       try {
         await _canalTtsNativo.invokeMethod('stop');
       } catch (_) {}
-      return {'exito': true, 'comando': cmd, 'mensaje': 'Voz detenida.'};
+      return {'exito': true, 'comando': cmd, 'mensaje': 'Voz TTS detenida.'};
+    }
+
+    if (cmd == 'AJUSTAR_VOLUMEN') {
+      final int pct = (int.tryParse(argumentos['porcentaje']?.toString() ?? '70') ?? 70).clamp(0, 100);
+      try {
+        await _canalTtsNativo.invokeMethod('setVolume', {'percent': pct});
+      } catch (_) {}
+      estado.escribirRuta('hardware.volumen_pct', pct);
+      return {'exito': true, 'comando': cmd, 'volumen_pct': pct, 'mensaje': 'Volumen ajustado al $pct%'};
     }
 
     if (cmd == 'HABLAR_TTS') {
@@ -78,16 +87,18 @@ class BusHardwareUniversal {
         argumentos['texto']?.toString() ?? '',
       );
       if (texto.isEmpty) {
-        return {'exito': true, 'comando': cmd, 'mensaje': 'Texto vacio.'};
+        return {'exito': true, 'comando': cmd, 'mensaje': 'Texto TTS vacio.'};
       }
       final double pitch = double.tryParse(argumentos['pitch']?.toString() ?? '1.0') ?? 1.0;
       final double rate = double.tryParse(argumentos['rate']?.toString() ?? '0.95') ?? 0.95;
+      final double vol = (double.tryParse(argumentos['volumen']?.toString() ?? '1.0') ?? 1.0).clamp(0.0, 1.0);
       HapticFeedback.selectionClick();
       try {
         await _canalTtsNativo.invokeMethod('speak', {
           'text': texto,
           'pitch': pitch,
           'rate': rate < 0.7 ? 0.95 : rate,
+          'volume': vol,
         });
       } catch (_) {}
       return {'exito': true, 'comando': cmd, 'mensaje': 'Voz: $texto'};

@@ -1,3 +1,4 @@
+import re
 import sys
 import struct
 import shutil
@@ -6,6 +7,18 @@ import subprocess
 
 LT = chr(60)
 GT = chr(62)
+
+PAQUETES_EN_IMPORT_38 = {
+    'http', 'crypto', 'path', 'uuid', 'flutter_riverpod', 'expressions',
+    'math_expressions', 'equations', 'units_converter', 'latlong2', 'timezone',
+    'json_path', 'csv', 'archive', 'web_socket_channel', 'mqtt_client',
+    'google_fonts', 'lucide_icons_flutter', 'ionicons', 'dotted_border',
+    'shimmer', 'flutter_animate', 'confetti', 'lottie', 'fl_chart',
+    'syncfusion_flutter_charts', 'qr_flutter', 'table_calendar',
+    'drag_and_drop_lists', 'screenshot', 'flutter_math_fork',
+    'flutter_markdown', 'data_table_2', 'flutter_staggered_grid_view',
+    'dropdown_button2', 'awesome_dialog', 'toastification', 'pdf'
+}
 
 def es_png_rgba_valido(data: bytes) -> bool:
     if len(data) >= 33 and data[:8] == b'\x89PNG\r\n\x1a\n':
@@ -29,7 +42,6 @@ def inyectar_motor_nativo_en_main_activity():
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioManager
-import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.PowerManager
 import android.speech.tts.TextToSpeech
@@ -74,27 +86,12 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
             val pend = textoPendiente
             if (pend != null && pend.isNotEmpty()) {{
                 textoPendiente = null
-                hablarAhora(pend, 1.0f, 0.95f)
+                hablarAhora(pend, 1.0f, 0.95f, 1.0f)
             }}
         }}
     }}
 
-    private fun hablarAhora(texto: String, pitch: Float, rate: Float) {{
-        try {{
-            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            if (am != null) {{
-                val maxMusic = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                if (am.getStreamVolume(AudioManager.STREAM_MUSIC) <= 1) {{
-                    // Volumen libre controlado por botones fisicos
-                }}
-                val maxAlarm = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-                if (am.getStreamVolume(AudioManager.STREAM_ALARM) <= 1) {{
-                    // Sin forzar volumen de alarma
-                }}
-            }}
-            // Sin pitido de alarma
-        }} catch (e: Exception) {{}}
-
+    private fun hablarAhora(texto: String, pitch: Float, rate: Float, vol: Float) {{
         if (!ttsListo) {{
             textoPendiente = texto
             return
@@ -102,7 +99,7 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
         tts?.setPitch(pitch)
         tts?.setSpeechRate(rate)
         val params = Bundle()
-        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, vol.coerceIn(0.0f, 1.0f))
         tts?.speak(texto, TextToSpeech.QUEUE_FLUSH, params, "sdui_utt_" + System.currentTimeMillis())
     }}
 
@@ -113,12 +110,25 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
                 val text: String = call.argument("text") ?: ""
                 val pitchNum: Number? = call.argument("pitch")
                 val rateNum: Number? = call.argument("rate")
+                val volNum: Number? = call.argument("volume")
                 val pitch = pitchNum?.toFloat() ?: 1.0f
                 val rate = rateNum?.toFloat() ?: 0.95f
-                hablarAhora(text, pitch, rate)
+                val vol = volNum?.toFloat() ?: 1.0f
+                hablarAhora(text, pitch, rate, vol)
                 result.success(true)
             }} else if (call.method == "stop") {{
                 tts?.stop()
+                result.success(true)
+            }} else if (call.method == "setVolume") {{
+                val pctNum: Number? = call.argument("percent")
+                val pct = (pctNum?.toInt() ?: 70).coerceIn(0, 100)
+                try {{
+                    val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    if (am != null) {{
+                        val maxM = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, (maxM * pct) / 100, 0)
+                    }}
+                }} catch (e: Exception) {{}}
                 result.success(true)
             }} else {{
                 result.notImplemented()
@@ -229,11 +239,42 @@ def configurar_android():
             gp.write_text(gtxt, encoding='utf-8')
 
 def resolver_pubspec():
+    pub_path = pathlib.Path('pubspec.yaml')
+    if pub_path.exists():
+        txt = pub_path.read_text(encoding='utf-8')
+        txt = re.sub(r'^\s*stac:\s*\^0\.7\.0\s*$', '  # stac: ^0.7.0', txt, flags=re.M)
+        pub_path.write_text(txt, encoding='utf-8')
+
+    for intento in range(20):
+        r = subprocess.run(['flutter', 'pub', 'get'], capture_output=True, text=True)
+        if r.returncode == 0:
+            print('flutter pub get resuelto exitosamente en intento', intento + 1)
+            return
+        salida = (r.stdout or '') + '\n' + (r.stderr or '')
+        print(salida)
+        candidatos = re.findall(r'depends on ([a-z0-9_]+)', salida)
+        modificado = False
+        if pub_path.exists():
+            ptxt = pub_path.read_text(encoding='utf-8')
+            for pkg in candidatos:
+                if pkg in ('flutter', 'flutter_test', 'super_apk_sdui_universal'):
+                    continue
+                if pkg not in PAQUETES_EN_IMPORT_38:
+                    nuevo_ptxt = re.sub(rf'^\s*{pkg}:\s*[^\n]+$', f'  # {pkg}: auto-omitido', ptxt, flags=re.M)
+                else:
+                    nuevo_ptxt = re.sub(rf'^(\s*{pkg}:)\s*\^?[0-9][^\n]*$', r'\1 any', ptxt, flags=re.M)
+                if nuevo_ptxt != ptxt:
+                    ptxt = nuevo_ptxt
+                    modificado = True
+            if modificado:
+                pub_path.write_text(ptxt, encoding='utf-8')
+                continue
+        break
     subprocess.run(['flutter', 'pub', 'get'], check=True)
 
 def compilar_apk():
     configurar_android()
-    subprocess.run(['flutter', 'pub', 'get'], check=True)
+    resolver_pubspec()
     subprocess.run(['flutter', 'build', 'apk', '--release', '--no-tree-shake-icons'], check=True)
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart' as crypto_pkg;
 import 'estado_global.dart';
 
 class PuenteSupabaseSdui {
-  static const String _defaultUrl = '[https://alxbydjpoxoavasklwpd.supabase.co](https://alxbydjpoxoavasklwpd.supabase.co)';
+  static const String _defaultUrl = 'https://alxbydjpoxoavasklwpd.supabase.co';
   static const String _defaultAnonKey = 'sb_publishable_Kc8wekwUqIs78ILNF-j-Qg_LNMYRhn0';
 
   static String supabaseUrl = _defaultUrl;
@@ -48,7 +48,9 @@ class PuenteSupabaseSdui {
     } catch (_) {}
 
     EstadoGlobalSdui.instancia.escribirRuta('sistema.esquema_activo', esquemaActivo, notificar: false);
-    EstadoGlobalSdui.instancia.escribirRuta('sistema.app_id_activo', appIdActivo, notificar: true);
+    EstadoGlobalSdui.instancia.escribirRuta('sistema.app_id_activo', appIdActivo, notificar: false);
+    EstadoGlobalSdui.instancia.escribirRuta('sistema.color_primario', '#00FF66', notificar: false);
+    EstadoGlobalSdui.instancia.escribirRuta('sistema.color_secundario', '#00F3FF', notificar: true);
   }
 
   static Future cambiarContextoMultiApp({
@@ -107,6 +109,46 @@ class PuenteSupabaseSdui {
     return copia;
   }
 
+  static Future cargarConfigGlobalApp({String? appOverride, String? esquemaOverride}) async {
+    final String appObj = appOverride ?? appIdActivo;
+    final String esqObj = esquemaOverride ?? esquemaActivo;
+    final Uri uri = Uri.parse('$supabaseUrl/rest/v1/apps_registro?app_id=eq.$appObj&select=config_global,version_ui,nombre');
+    final Map rawHeaders = _construirHeaders(esquemaOverride: esqObj);
+    try {
+      final resp = await http
+          .get(
+            uri,
+            headers: rawHeaders.map((k, v) => MapEntry(k.toString(), v.toString())),
+          )
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode >= 200 && resp.statusCode < 300 && resp.body.isNotEmpty) {
+        final decoded = jsonDecode(resp.body);
+        if (decoded is List && decoded.isNotEmpty && decoded.first is Map) {
+          final Map fila = Map.from(decoded.first as Map);
+          final dynamic cfgRaw = fila['config_global'];
+          if (cfgRaw is Map) {
+            final Map cfg = Map.from(cfgRaw);
+            EstadoGlobalSdui.instancia.escribirRuta('sistema.config_global', cfg, notificar: false);
+            if (cfg['color_primario'] != null) {
+              EstadoGlobalSdui.instancia.escribirRuta(
+                'sistema.color_primario',
+                cfg['color_primario'].toString(),
+                notificar: false,
+              );
+            }
+            if (cfg['color_secundario'] != null) {
+              EstadoGlobalSdui.instancia.escribirRuta(
+                'sistema.color_secundario',
+                cfg['color_secundario'].toString(),
+                notificar: false,
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   static Future llamarRpcNano(
     String nombreRpc,
     Map parametros, {
@@ -156,6 +198,8 @@ class PuenteSupabaseSdui {
     final String esqObj = esquemaOverride ?? esquemaActivo;
     final File fCache = _archivoCacheHive(esqObj, appObj);
 
+    await cargarConfigGlobalApp(appOverride: appObj, esquemaOverride: esqObj);
+
     String hashLocal = '';
     List? pantallasCacheadas;
 
@@ -204,6 +248,24 @@ class PuenteSupabaseSdui {
     return _semillaLocalEmergencia();
   }
 
+  static String extraerTextoLimpioGemini(Map dec) {
+    try {
+      if (dec['candidates'] is List && (dec['candidates'] as List).isNotEmpty) {
+        final dynamic cand0 = (dec['candidates'] as List).first;
+        if (cand0 is Map && cand0['content'] is Map) {
+          final Map content = cand0['content'] as Map;
+          if (content['parts'] is List && (content['parts'] as List).isNotEmpty) {
+            final dynamic part0 = (content['parts'] as List).first;
+            if (part0 is Map && part0['text'] != null) {
+              return part0['text'].toString().trim();
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return dec['mensaje']?.toString() ?? 'Respuesta procesada por Gemini IA.';
+  }
+
   static Future ejecutarPuenteApiYGemini({
     required String apiId,
     required Map payload,
@@ -222,7 +284,7 @@ class PuenteSupabaseSdui {
     if (geminiApiKey.isNotEmpty && promptUsuario.isNotEmpty) {
       try {
         final uriGem = Uri.parse(
-          '[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey)',
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
         );
         final rGem = await http
             .post(
@@ -241,27 +303,37 @@ class PuenteSupabaseSdui {
             .timeout(const Duration(seconds: 15));
         if (rGem.statusCode == 200) {
           final Map dec = jsonDecode(rGem.body) as Map;
-          String textoIa = dec.toString();
-          try {
-            final List cands = dec['candidates'] as List;
-            final Map content = (cands.first as Map)['content'] as Map;
-            final List parts = content['parts'] as List;
-            textoIa = (parts.first as Map)['text']?.toString() ?? textoIa;
-          } catch (_) {}
-          final String limpioJson = textoIa
+          final String textoCrudo = extraerTextoLimpioGemini(dec);
+          final String textoLimpio = textoCrudo
               .replaceAll('```json', '')
               .replaceAll('```', '')
               .trim();
-          EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', limpioJson, notificar: false);
-          if (limpioJson.startsWith('{')) {
-            EstadoGlobalSdui.instancia.escribirRuta('form.arbol_json_str', limpioJson, notificar: true);
+
+          EstadoGlobalSdui.instancia.escribirRuta(
+            'ia.ultima_respuesta_gemini',
+            textoLimpio,
+            notificar: false,
+          );
+          if (textoLimpio.startsWith('{') && textoLimpio.endsWith('}')) {
+            EstadoGlobalSdui.instancia.escribirRuta(
+              'form.arbol_json_str',
+              textoLimpio,
+              notificar: true,
+            );
           } else {
-            EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', limpioJson, notificar: true);
+            EstadoGlobalSdui.instancia.escribirRuta(
+              'ia.ultima_respuesta_gemini',
+              textoLimpio,
+              notificar: true,
+            );
           }
-          return {'exito': true, 'respuesta_ia': limpioJson, 'meta_rpc': meta};
+          return {'exito': true, 'respuesta_ia': textoLimpio, 'meta_rpc': meta};
         }
       } catch (e) {
-        EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', 'Error Gemini REST: $e');
+        EstadoGlobalSdui.instancia.escribirRuta(
+          'ia.ultima_respuesta_gemini',
+          'Error Gemini REST: $e',
+        );
       }
     }
 
