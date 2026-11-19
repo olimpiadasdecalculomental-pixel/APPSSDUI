@@ -30,24 +30,53 @@ def es_png_rgba_valido(data: bytes) -> bool:
         return 16 <= w <= 1024 and 16 <= h <= 1024 and color_type in (2, 6)
     return False
 
+def forzar_kotlin_version():
+    # settings.gradle (Flutter 3.19+)
+    for f in ['android/settings.gradle', 'android/settings.gradle.kts']:
+        p = pathlib.Path(f)
+        if p.exists():
+            lineas = p.read_text(encoding='utf-8').splitlines()
+            nuevas_lineas = []
+            for l in lineas:
+                if 'org.jetbrains.kotlin.android' in l and 'version' in l:
+                    # Remplaza toda la linea conservando apply false si existe
+                    if 'apply false' in l:
+                        nuevas_lineas.append('    id "org.jetbrains.kotlin.android" version "2.1.0" apply false')
+                    else:
+                        nuevas_lineas.append('    id "org.jetbrains.kotlin.android" version "2.1.0"')
+                else:
+                    nuevas_lineas.append(l)
+            p.write_text('\n'.join(nuevas_lineas), encoding='utf-8')
+
+    # build.gradle (Flutter Antiguo)
+    for f in ['android/build.gradle', 'android/build.gradle.kts']:
+        p = pathlib.Path(f)
+        if p.exists():
+            lineas = p.read_text(encoding='utf-8').splitlines()
+            nuevas_lineas = []
+            injected = False
+            for l in lineas:
+                if 'ext.kotlin_version' in l:
+                    nuevas_lineas.append("    ext.kotlin_version = '2.1.0'")
+                    injected = True
+                elif 'buildscript {' in l and not injected:
+                    nuevas_lineas.append(l)
+                    nuevas_lineas.append("    ext.kotlin_version = '2.1.0'")
+                    injected = True
+                else:
+                    nuevas_lineas.append(l)
+            p.write_text('\n'.join(nuevas_lineas), encoding='utf-8')
+
 def arreglar_repositorios_gradle():
-    # Asegurar mavenCentral para evitar errores de red de repositorios
     for f in ['android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts']:
         p = pathlib.Path(f)
         if p.exists():
             t = p.read_text(encoding='utf-8')
             if 'mavenCentral()' not in t:
                 t = re.sub(r'(google\(\))', r'\1\n        mavenCentral()', t)
-            
-            # Blindaje 100% Kotlin 2.1.0 (Para Flutter 3.19+ y Mobile Scanner)
-            t = re.sub(r'id\s*["\']org\.jetbrains\.kotlin\.android["\']\s*version\s*["\'][^"\']+["\']', 'id "org.jetbrains.kotlin.android" version "2.1.0"', t)
-            t = re.sub(r'ext\.kotlin_version\s*=\s*["\'][^"\']+["\']', "ext.kotlin_version = '2.1.0'", t)
-            
-            # Si es el build.gradle antiguo y no tenia ext.kotlin_version, lo inyectamos a la fuerza
-            if 'buildscript {' in t and 'ext.kotlin_version' not in t:
-                t = t.replace('buildscript {', "buildscript {\n    ext.kotlin_version = '2.1.0'")
-
             p.write_text(t, encoding='utf-8')
+            
+    forzar_kotlin_version()
 
 def inyectar_motor_nativo_en_main_activity():
     main_dir = pathlib.Path('android/app/src/main')
