@@ -30,6 +30,16 @@ def es_png_rgba_valido(data: bytes) -> bool:
         return 16 <= w <= 1024 and 16 <= h <= 1024 and color_type in (2, 6)
     return False
 
+def arreglar_repositorios_gradle():
+    # Obliga a Gradle a buscar en mavenCentral() para evitar el error de Kotlin 1.9.24
+    for f in ['android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts']:
+        p = pathlib.Path(f)
+        if p.exists():
+            t = p.read_text(encoding='utf-8')
+            if 'mavenCentral()' not in t:
+                t = re.sub(r'(google\(\))', r'\1\n        mavenCentral()', t)
+            p.write_text(t, encoding='utf-8')
+
 def inyectar_motor_nativo_en_main_activity():
     main_dir = pathlib.Path('android/app/src/main')
     if not main_dir.exists():
@@ -260,7 +270,8 @@ def configurar_android():
         if lineas_xml and tag_app in txt:
             txt = txt.replace(tag_app, lineas_xml + '    ' + tag_app, 1)
             manifest.write_text(txt, encoding='utf-8')
-
+            
+    arreglar_repositorios_gradle()
     inyectar_motor_nativo_en_main_activity()
 
     for ruta_g in ['android/app/build.gradle', 'android/app/build.gradle.kts']:
@@ -268,10 +279,8 @@ def configurar_android():
         if gp.exists():
             gtxt = gp.read_text(encoding='utf-8')
             
-            # Limpiamos referencias de ndkVersion previas para evitar "Assignments are not expressions"
             gtxt = re.sub(r'\s*ndkVersion\s*=?\s*["\']?[0-9.]+["\']?(?:\s*=\s*flutter\.ndkVersion)?', '', gtxt)
             
-            # Forzamos los SDK mínimos robustos y el NDK en KTS / Gradle clásico
             gtxt = gtxt.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
             gtxt = gtxt.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 24')
             gtxt = gtxt.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 34\n        ndkVersion = "27.0.12077973"')
