@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_ce/hive.dart';
+import 'package:path/path.dart' as p;
 import 'nucleo/puente_supabase.dart';
 import 'nucleo/librerias_maestras_sdui.dart';
 import 'motores/renderizador_atomico.dart';
@@ -8,12 +11,26 @@ import 'motores/renderizador_atomico.dart';
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
-    LibreriasMaestrasSdui.inicializarGlobales(); // <- INICIA EL PUENTE MAESTRO
+    LibreriasMaestrasSdui.inicializarGlobales();
+
+    try {
+      final String rutaHive = p.join('/data/user/0/com.example.appssdui/files', 'sdui_hive');
+      final dir = Directory(rutaHive);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      Hive.init(rutaHive);
+    } catch (_) {
+      Hive.init(Directory.systemTemp.path);
+    }
+
+    try {
+      await Hive.openBox('sdui_boveda_persistente');
+    } catch (_) {}
 
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ));
+
     ErrorWidget.builder = (FlutterErrorDetails details) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -28,6 +45,7 @@ void main() {
         ),
       );
     };
+
     await PuenteSupabaseSdui.inicializarPuenteUniversal();
     runApp(const SuperApkUniversalSduiApp());
   }, (error, stack) {

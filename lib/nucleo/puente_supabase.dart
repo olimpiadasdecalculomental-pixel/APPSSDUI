@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart' as crypto_pkg;
+import 'package:hive_ce/hive.dart';
 import 'estado_global.dart';
 
 class PuenteSupabaseSdui {
@@ -15,34 +15,39 @@ class PuenteSupabaseSdui {
   static String appIdActivo = 'APP_UNIVERSAL_SDUI';
   static String geminiApiKey = '';
 
-  static File _archivoConfigSegura() {
-    return File('${Directory.systemTemp.path}/sdui_boveda_contexto_v42.json');
+  static Box? _obtenerBoveda() {
+    if (Hive.isBoxOpen('sdui_boveda_persistente')) {
+      return Hive.box('sdui_boveda_persistente');
+    }
+    return null;
   }
 
-  static File _archivoCacheHive(String esq, String app) {
-    final String hashKey = crypto_pkg.md5.convert(utf8.encode('${esq}_$app')).toString();
-    return File('${Directory.systemTemp.path}/sdui_hive_cache_v42_$hashKey.json');
+  static String _generarKeyCachePantallas(String esq, String app) {
+    return crypto_pkg.md5.convert(utf8.encode('cache_pantallas_${esq}_$app')).toString();
   }
 
   static Future inicializarPuenteUniversal() async {
     try {
-      final f = _archivoConfigSegura();
-      if (await f.exists()) {
-        final Map data = jsonDecode(await f.readAsString()) as Map;
-        if (data['esquema_activo'] != null && data['esquema_activo'].toString().trim().isNotEmpty) {
-          esquemaActivo = data['esquema_activo'].toString().trim();
-        }
-        if (data['app_id_activo'] != null && data['app_id_activo'].toString().trim().isNotEmpty) {
-          appIdActivo = data['app_id_activo'].toString().trim();
-        }
-        if (data['supabase_url'] != null && data['supabase_url'].toString().trim().isNotEmpty) {
-          supabaseUrl = data['supabase_url'].toString().trim();
-        }
-        if (data['supabase_key'] != null && data['supabase_key'].toString().trim().isNotEmpty) {
-          supabaseAnonKey = data['supabase_key'].toString().trim();
-        }
-        if (data['gemini_key'] != null && data['gemini_key'].toString().trim().isNotEmpty) {
-          geminiApiKey = data['gemini_key'].toString().trim();
+      final box = _obtenerBoveda();
+      if (box != null) {
+        final String? rawConfig = box.get('contexto_app_v45');
+        if (rawConfig != null && rawConfig.isNotEmpty) {
+          final Map data = jsonDecode(rawConfig) as Map;
+          if (data['esquema_activo'] != null && data['esquema_activo'].toString().trim().isNotEmpty) {
+            esquemaActivo = data['esquema_activo'].toString().trim();
+          }
+          if (data['app_id_activo'] != null && data['app_id_activo'].toString().trim().isNotEmpty) {
+            appIdActivo = data['app_id_activo'].toString().trim();
+          }
+          if (data['supabase_url'] != null && data['supabase_url'].toString().trim().isNotEmpty) {
+            supabaseUrl = data['supabase_url'].toString().trim();
+          }
+          if (data['supabase_key'] != null && data['supabase_key'].toString().trim().isNotEmpty) {
+            supabaseAnonKey = data['supabase_key'].toString().trim();
+          }
+          if (data['gemini_key'] != null && data['gemini_key'].toString().trim().isNotEmpty) {
+            geminiApiKey = data['gemini_key'].toString().trim();
+          }
         }
       }
     } catch (_) {}
@@ -65,14 +70,16 @@ class PuenteSupabaseSdui {
     if (nuevaGeminiKey != null && nuevaGeminiKey.trim().isNotEmpty) geminiApiKey = nuevaGeminiKey.trim();
 
     try {
-      final f = _archivoConfigSegura();
-      await f.writeAsString(jsonEncode({
-        'esquema_activo': esquemaActivo,
-        'app_id_activo': appIdActivo,
-        'supabase_url': supabaseUrl,
-        'supabase_key': supabaseAnonKey,
-        'gemini_key': geminiApiKey,
-      }));
+      final box = _obtenerBoveda();
+      if (box != null) {
+        await box.put('contexto_app_v45', jsonEncode({
+          'esquema_activo': esquemaActivo,
+          'app_id_activo': appIdActivo,
+          'supabase_url': supabaseUrl,
+          'supabase_key': supabaseAnonKey,
+          'gemini_key': geminiApiKey,
+        }));
+      }
     } catch (_) {}
 
     EstadoGlobalSdui.instancia.escribirRuta('sistema.esquema_activo', esquemaActivo, notificar: false);
@@ -178,7 +185,7 @@ class PuenteSupabaseSdui {
       return {
         'exito': false,
         'modo_offline': true,
-        'mensaje': 'Modo Offline activo (Cache Local): $e',
+        'mensaje': 'Modo Offline activo (Cache Local Hive): $e',
       };
     }
   }
@@ -189,7 +196,8 @@ class PuenteSupabaseSdui {
   }) async {
     final String appObj = appOverride ?? appIdActivo;
     final String esqObj = esquemaOverride ?? esquemaActivo;
-    final File fCache = _archivoCacheHive(esqObj, appObj);
+    final String cacheKey = _generarKeyCachePantallas(esqObj, appObj);
+    final box = _obtenerBoveda();
 
     await cargarConfigGlobalApp(appOverride: appObj, esquemaOverride: esqObj);
 
@@ -197,11 +205,14 @@ class PuenteSupabaseSdui {
     List? pantallasCacheadas;
 
     try {
-      if (await fCache.exists()) {
-        final Map cacheObj = jsonDecode(await fCache.readAsString()) as Map;
-        hashLocal = cacheObj['version_hash']?.toString() ?? '';
-        if (cacheObj['pantallas'] is List) {
-          pantallasCacheadas = List.from(cacheObj['pantallas'] as List);
+      if (box != null) {
+        final String? rawCache = box.get(cacheKey);
+        if (rawCache != null && rawCache.isNotEmpty) {
+          final Map cacheObj = jsonDecode(rawCache) as Map;
+          hashLocal = cacheObj['version_hash']?.toString() ?? '';
+          if (cacheObj['pantallas'] is List) {
+            pantallasCacheadas = List.from(cacheObj['pantallas'] as List);
+          }
         }
       }
     } catch (_) {}
@@ -225,10 +236,12 @@ class PuenteSupabaseSdui {
         final List listaRemota = List.from(res['pantallas'] as List);
         final String nuevoHash = res['version_hash']?.toString() ?? '';
         try {
-          await fCache.writeAsString(jsonEncode({
-            'version_hash': nuevoHash,
-            'pantallas': listaRemota,
-          }));
+          if (box != null) {
+            await box.put(cacheKey, jsonEncode({
+              'version_hash': nuevoHash,
+              'pantallas': listaRemota,
+            }));
+          }
         } catch (_) {}
         return listaRemota;
       }
@@ -354,7 +367,7 @@ class PuenteSupabaseSdui {
           'children': [
             {
               'type': 'card',
-              'titulo': 'MODO RESCATE OFFLINE (SIN CACHE LOCAL)',
+              'titulo': 'MODO RESCATE OFFLINE (HIVE BUNKER)',
               'subtitulo': 'Esquema: {{sistema.esquema_activo}} · App: {{sistema.app_id_activo}}',
               'color_borde': '#00FF66',
               'children': [

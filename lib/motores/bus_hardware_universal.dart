@@ -13,6 +13,8 @@ import 'package:uuid/uuid.dart' as uuid_pkg;
 import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod_pkg;
 import 'package:drag_and_drop_lists/drag_and_drop_lists.dart' as dnd_pkg;
 import 'package:path/path.dart' as p;
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
 import '../nucleo/estado_global.dart';
 import '../nucleo/puente_supabase.dart';
 
@@ -20,6 +22,7 @@ class BusHardwareUniversal {
   static const MethodChannel _canalTtsNativo = MethodChannel('com.logicasdui/tts_nativo');
   static const MethodChannel _canalHardwareNativo = MethodChannel('com.logicasdui/hardware_bus');
   static final uuid_pkg.Uuid _uuid = const uuid_pkg.Uuid();
+  static MqttServerClient? _mqttClient;
 
   static Map verificarPaquetesCompilados() {
     const coordBase = LatLng(-17.9647, -67.1060);
@@ -32,6 +35,7 @@ class BusHardwareUniversal {
       'riverpod_ok': riverpod_pkg.ProviderContainer.new.toString().isNotEmpty,
       'dnd_ok': dnd_pkg.DragAndDropList.new.toString().isNotEmpty,
       'ionicons_ok': Ionicons.watch_outline.codePoint != 0,
+      'mqtt_ok': MqttServerClient.new.toString().isNotEmpty,
     };
   }
 
@@ -62,6 +66,78 @@ class BusHardwareUniversal {
     verificarPaquetesCompilados();
     final String cmd = comando.toUpperCase().trim();
     final estado = EstadoGlobalSdui.instancia;
+
+    if (cmd == 'MQTT_CONECTAR') {
+      final String broker = argumentos['broker']?.toString() ?? '';
+      final int puerto = int.tryParse(argumentos['puerto']?.toString() ?? '1883') ?? 1883;
+      final String clientId = argumentos['client_id']?.toString() ?? 'sdui_iot_${DateTime.now().millisecondsSinceEpoch}';
+      final String user = argumentos['usuario']?.toString() ?? '';
+      final String pass = argumentos['password']?.toString() ?? '';
+
+      if (broker.isEmpty) return {'exito': false, 'comando': cmd, 'mensaje': 'Broker vacío'};
+
+      _mqttClient = MqttServerClient.withPort(broker, clientId, puerto);
+      _mqttClient!.logging(on: false);
+      _mqttClient!.keepAlivePeriod = 60;
+      _mqttClient!.onDisconnected = () {
+        estado.escribirRuta('hardware.mqtt_conectado', false, notificar: true);
+      };
+
+      try {
+        if (user.isNotEmpty && pass.isNotEmpty) {
+          await _mqttClient!.connect(user, pass);
+        } else {
+          await _mqttClient!.connect();
+        }
+      } catch (e) {
+        _mqttClient?.disconnect();
+        return {'exito': false, 'comando': cmd, 'mensaje': 'Error MQTT: $e'};
+      }
+
+      if (_mqttClient!.connectionStatus!.state == MqttConnectionState.connected) {
+        estado.escribirRuta('hardware.mqtt_conectado', true, notificar: true);
+        
+        _mqttClient!.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
+          final MqttPublishMessage recMess = c[0].payload as MqttPublishMessage;
+          final String pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
+          final String topic = c[0].topic;
+          
+          estado.escribirRuta('hardware.mqtt_ultimo_mensaje', pt, notificar: false);
+          estado.escribirRuta('hardware.mqtt_topicos.$topic', pt, notificar: true);
+        });
+
+        return {'exito': true, 'comando': cmd, 'mensaje': 'IoT Conectado a $broker'};
+      } else {
+        _mqttClient?.disconnect();
+        return {'exito': false, 'comando': cmd, 'mensaje': 'Conexión fallida MQTT'};
+      }
+    }
+
+    if (cmd == 'MQTT_PUBLICAR') {
+      if (_mqttClient == null || _mqttClient!.connectionStatus!.state != MqttConnectionState.connected) {
+        return {'exito': false, 'comando': cmd, 'mensaje': 'MQTT no conectado'};
+      }
+      final String topic = argumentos['topico']?.toString() ?? '';
+      final String payload = argumentos['mensaje']?.toString() ?? '';
+      if (topic.isEmpty) return {'exito': false, 'comando': cmd, 'mensaje': 'Tópico vacío'};
+
+      final builder = MqttClientPayloadBuilder();
+      builder.addString(payload);
+      _mqttClient!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+      
+      return {'exito': true, 'comando': cmd, 'mensaje': 'Publicado en $topic'};
+    }
+
+    if (cmd == 'MQTT_SUSCRIBIR') {
+      if (_mqttClient == null || _mqttClient!.connectionStatus!.state != MqttConnectionState.connected) {
+        return {'exito': false, 'comando': cmd, 'mensaje': 'MQTT no conectado'};
+      }
+      final String topic = argumentos['topico']?.toString() ?? '';
+      if (topic.isEmpty) return {'exito': false, 'comando': cmd, 'mensaje': 'Tópico vacío'};
+
+      _mqttClient!.subscribe(topic, MqttQos.atLeastOnce);
+      return {'exito': true, 'comando': cmd, 'mensaje': 'Suscrito a $topic'};
+    }
 
     if (cmd == 'SILENCIAR_TTS' || cmd == 'DETENER_TTS') {
       try {
