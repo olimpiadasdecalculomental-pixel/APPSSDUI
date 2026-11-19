@@ -60,7 +60,7 @@ class LibreriasMaestrasSdui {
     final dynamic testReferencia = [
       riverpod_pkg.ProviderContainer,
       GoogleFonts.roboto,
-      LucideIcons.home,
+      LucideIcons,
       Ionicons.home,
       DottedBorder,
       Shimmer,

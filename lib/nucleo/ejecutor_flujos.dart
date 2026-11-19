@@ -260,16 +260,22 @@ class EjecutorFlujosSdui {
 
       if (accion == 'EXPORTAR_CSV') {
         final List lista = (estado.leerRuta('sistema.ultima_lista_top10') as List?) ?? [];
-        final List filas = [
-          ['id', 'coleccion', 'propietario_id', 'estado', 'datos'],
-          ...lista.whereType().map((m) => [
-                m['id'] ?? '',
-                m['coleccion'] ?? '',
-                m['propietario_id'] ?? '',
-                m['estado'] ?? '',
-                jsonEncode(m['datos'] ?? {}),
-              ]),
+        final List<List<dynamic>> filas = [
+          ['id', 'coleccion', 'propietario_id', 'estado', 'datos']
         ];
+        
+        for (var m in lista) {
+          if (m is Map) {
+            filas.add([
+              m['id'] ?? '',
+              m['coleccion'] ?? '',
+              m['propietario_id'] ?? '',
+              m['estado'] ?? '',
+              jsonEncode(m['datos'] ?? {})
+            ]);
+          }
+        }
+
         final String csvTxt = const ListToCsvConverter().convert(filas);
         final List gzBytes = GZipEncoder().encode(utf8.encode(csvTxt)) ?? [];
         final f = File('${Directory.systemTemp.path}/export_sdui_${DateTime.now().millisecondsSinceEpoch}.csv');
