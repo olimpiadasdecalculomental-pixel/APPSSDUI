@@ -1,8 +1,13 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:expressions/expressions.dart' as expr_pkg;
 import 'package:math_expressions/math_expressions.dart' as math_exp;
+import 'package:equations/equations.dart' as eq_pkg;
+import 'package:csv/csv.dart';
+import 'package:archive/archive.dart';
+import 'package:json_path/json_path.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'estado_global.dart';
@@ -53,6 +58,30 @@ class EjecutorFlujosSdui {
         final double resMat = evaluarFormulaMatematica(formula, valX: valX, valY: valY);
         final String rutaDestino = paso['guardar_en']?.toString() ?? 'form.resultado_formula';
         estado.escribirRuta(rutaDestino, resMat);
+        continue;
+      }
+
+      if (accion == 'RESOLVER_ECUACION') {
+        final double a = double.tryParse(paso['a']?.toString() ?? '1') ?? 1.0;
+        final double b = double.tryParse(paso['b']?.toString() ?? '-5') ?? -5.0;
+        final double c = double.tryParse(paso['c']?.toString() ?? '6') ?? 6.0;
+        final eq = eq_pkg.Quadratic.realEquation(a: a, b: b, c: c);
+        final String raices = eq.solutions().map((s) => s.real.toStringAsFixed(2)).join(', ');
+        final String rutaDest = paso['guardar_en']?.toString() ?? 'form.raices_ecuacion';
+        estado.escribirRuta(rutaDest, raices);
+        onFeedback?.call('Raices: $raices');
+        continue;
+      }
+
+      if (accion == 'EXTRAER_JSON_PATH') {
+        final String expresionPath = paso['path']?.toString() ?? r'$.*';
+        final String rutaOrigen = paso['origen']?.toString() ?? 'sistema.ultima_respuesta_rpc';
+        final dynamic obj = estado.leerRuta(rutaOrigen);
+        try {
+          final jp = JsonPath(expresionPath);
+          final vals = jp.read(obj).map((m) => m.value).toList();
+          estado.escribirRuta(paso['guardar_en']?.toString() ?? 'form.dato_extraido', vals.toString());
+        } catch (_) {}
         continue;
       }
 
@@ -229,6 +258,26 @@ class EjecutorFlujosSdui {
         continue;
       }
 
+      if (accion == 'EXPORTAR_CSV') {
+        final List lista = (estado.leerRuta('sistema.ultima_lista_top10') as List?) ?? [];
+        final List filas = [
+          ['id', 'coleccion', 'propietario_id', 'estado', 'datos'],
+          ...lista.whereType().map((m) => [
+                m['id'] ?? '',
+                m['coleccion'] ?? '',
+                m['propietario_id'] ?? '',
+                m['estado'] ?? '',
+                jsonEncode(m['datos'] ?? {}),
+              ]),
+        ];
+        final String csvTxt = const ListToCsvConverter().convert(filas);
+        final List gzBytes = GZipEncoder().encode(utf8.encode(csvTxt)) ?? [];
+        final f = File('${Directory.systemTemp.path}/export_sdui_${DateTime.now().millisecondsSinceEpoch}.csv');
+        await f.writeAsString(csvTxt);
+        onFeedback?.call('CSV (${filas.length - 1} filas, GZip ${gzBytes.length}B): ${f.path}');
+        continue;
+      }
+
       if (accion == 'EXPORTAR_PDF') {
         final String tituloPdf =
             paso['titulo']?.toString() ?? 'Reporte Oficial Super-APK SDUI';
@@ -316,11 +365,7 @@ class EjecutorFlujosSdui {
         ),
         title: Text(
           titulo,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
+          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900),
         ),
         content: Text(
           pregunta,
@@ -333,15 +378,11 @@ class EjecutorFlujosSdui {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  esDestructivo ? const Color(0xFFFF4D4D) : const Color(0xFF00FF66),
+              backgroundColor: esDestructivo ? const Color(0xFFFF4D4D) : const Color(0xFF00FF66),
               foregroundColor: esDestructivo ? Colors.white : Colors.black,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'SI, CONFIRMAR',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
+            child: const Text('SI, CONFIRMAR', style: TextStyle(fontWeight: FontWeight.w900)),
           ),
         ],
       ),
@@ -362,43 +403,19 @@ class EjecutorFlujosSdui {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(
-                titulo,
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 8),
-              pw.Text(
-                'Esquema: ${PuenteSupabaseSdui.esquemaActivo} | App ID: ${PuenteSupabaseSdui.appIdActivo}',
-                style: const pw.TextStyle(fontSize: 11),
-              ),
+              pw.Text(titulo, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              pw.Text('Esquema: ${PuenteSupabaseSdui.esquemaActivo} | App ID: ${PuenteSupabaseSdui.appIdActivo}', style: const pw.TextStyle(fontSize: 11)),
               pw.Divider(),
-              pw.Text(
-                'Estado Global Capturado:',
-                style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Text(
-                estado.almacenCompleto.toString(),
-                style: const pw.TextStyle(fontSize: 9.5),
-              ),
-              pw.SizedBox(height: 12),
-              pw.Text(
-                'Parametros del Reporte:',
-                style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Text(
-                datos.toString(),
-                style: const pw.TextStyle(fontSize: 9.5),
-              ),
+              pw.Text('Estado Global:', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+              pw.Text(estado.almacenCompleto.toString(), style: const pw.TextStyle(fontSize: 9.5)),
             ],
           );
         },
       ),
     );
     final bytes = await doc.save();
-    final f = File(
-      '${Directory.systemTemp.path}/reporte_sdui_${DateTime.now().millisecondsSinceEpoch}.pdf',
-    );
+    final f = File('${Directory.systemTemp.path}/reporte_sdui_${DateTime.now().millisecondsSinceEpoch}.pdf');
     await f.writeAsBytes(bytes);
     return '${f.path} (${(bytes.length / 1024).toStringAsFixed(1)} KB)';
   }

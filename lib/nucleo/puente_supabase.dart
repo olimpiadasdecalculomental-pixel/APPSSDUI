@@ -16,12 +16,12 @@ class PuenteSupabaseSdui {
   static String geminiApiKey = '';
 
   static File _archivoConfigSegura() {
-    return File('${Directory.systemTemp.path}/sdui_boveda_contexto_v4.json');
+    return File('${Directory.systemTemp.path}/sdui_boveda_contexto_v42.json');
   }
 
   static File _archivoCacheHive(String esq, String app) {
     final String hashKey = crypto_pkg.md5.convert(utf8.encode('${esq}_$app')).toString();
-    return File('${Directory.systemTemp.path}/sdui_hive_cache_v4_$hashKey.json');
+    return File('${Directory.systemTemp.path}/sdui_hive_cache_v42_$hashKey.json');
   }
 
   static Future inicializarPuenteUniversal() async {
@@ -48,9 +48,7 @@ class PuenteSupabaseSdui {
     } catch (_) {}
 
     EstadoGlobalSdui.instancia.escribirRuta('sistema.esquema_activo', esquemaActivo, notificar: false);
-    EstadoGlobalSdui.instancia.escribirRuta('sistema.app_id_activo', appIdActivo, notificar: false);
-    EstadoGlobalSdui.instancia.escribirRuta('sistema.color_primario', '#00FF66', notificar: false);
-    EstadoGlobalSdui.instancia.escribirRuta('sistema.color_secundario', '#00F3FF', notificar: true);
+    EstadoGlobalSdui.instancia.escribirRuta('sistema.app_id_activo', appIdActivo, notificar: true);
   }
 
   static Future cambiarContextoMultiApp({
@@ -130,18 +128,13 @@ class PuenteSupabaseSdui {
             final Map cfg = Map.from(cfgRaw);
             EstadoGlobalSdui.instancia.escribirRuta('sistema.config_global', cfg, notificar: false);
             if (cfg['color_primario'] != null) {
-              EstadoGlobalSdui.instancia.escribirRuta(
-                'sistema.color_primario',
-                cfg['color_primario'].toString(),
-                notificar: false,
-              );
+              EstadoGlobalSdui.instancia.escribirRuta('sistema.color_primario', cfg['color_primario'].toString(), notificar: false);
             }
             if (cfg['color_secundario'] != null) {
-              EstadoGlobalSdui.instancia.escribirRuta(
-                'sistema.color_secundario',
-                cfg['color_secundario'].toString(),
-                notificar: false,
-              );
+              EstadoGlobalSdui.instancia.escribirRuta('sistema.color_secundario', cfg['color_secundario'].toString(), notificar: false);
+            }
+            if (cfg['pantalla_completa'] != null) {
+              EstadoGlobalSdui.instancia.escribirRuta('sistema.pantalla_completa', cfg['pantalla_completa'] == true, notificar: false);
             }
           }
         }
@@ -309,31 +302,16 @@ class PuenteSupabaseSdui {
               .replaceAll('```', '')
               .trim();
 
-          EstadoGlobalSdui.instancia.escribirRuta(
-            'ia.ultima_respuesta_gemini',
-            textoLimpio,
-            notificar: false,
-          );
+          EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', textoLimpio, notificar: false);
           if (textoLimpio.startsWith('{') && textoLimpio.endsWith('}')) {
-            EstadoGlobalSdui.instancia.escribirRuta(
-              'form.arbol_json_str',
-              textoLimpio,
-              notificar: true,
-            );
+            EstadoGlobalSdui.instancia.escribirRuta('form.arbol_json_str', textoLimpio, notificar: true);
           } else {
-            EstadoGlobalSdui.instancia.escribirRuta(
-              'ia.ultima_respuesta_gemini',
-              textoLimpio,
-              notificar: true,
-            );
+            EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', textoLimpio, notificar: true);
           }
           return {'exito': true, 'respuesta_ia': textoLimpio, 'meta_rpc': meta};
         }
       } catch (e) {
-        EstadoGlobalSdui.instancia.escribirRuta(
-          'ia.ultima_respuesta_gemini',
-          'Error Gemini REST: $e',
-        );
+        EstadoGlobalSdui.instancia.escribirRuta('ia.ultima_respuesta_gemini', 'Error Gemini REST: $e');
       }
     }
 
@@ -380,35 +358,15 @@ class PuenteSupabaseSdui {
               'subtitulo': 'Esquema: {{sistema.esquema_activo}} · App: {{sistema.app_id_activo}}',
               'color_borde': '#00FF66',
               'children': [
-                {
-                  'type': 'input',
-                  'campo': 'esquema',
-                  'label': 'Esquema PostgreSQL:',
-                  'placeholder': 'esquema1'
-                },
-                {
-                  'type': 'input',
-                  'campo': 'app_id',
-                  'label': 'App ID Activa:',
-                  'placeholder': 'APP_UNIVERSAL_SDUI'
-                },
-                {
-                  'type': 'input',
-                  'campo': 'gemini_key',
-                  'label': 'Gemini API Key (Opcional):',
-                  'placeholder': 'AIza...'
-                },
+                {'type': 'input', 'campo': 'esquema', 'label': 'Esquema PostgreSQL:', 'placeholder': 'esquema1'},
+                {'type': 'input', 'campo': 'app_id', 'label': 'App ID Activa:', 'placeholder': 'APP_UNIVERSAL_SDUI'},
+                {'type': 'input', 'campo': 'gemini_key', 'label': 'Gemini API Key (Opcional):', 'placeholder': 'AIza...'},
                 {
                   'type': 'button',
                   'texto': 'CAMBIAR_CONTEXTO_MULTI_APP',
                   'color': '#00FF66',
                   'flujo_acciones': [
-                    {
-                      'accion': 'CAMBIAR_CONTEXTO_MULTI_APP',
-                      'esquema': '{{form.esquema}}',
-                      'app_id': '{{form.app_id}}',
-                      'gemini_key': '{{form.gemini_key}}'
-                    }
+                    {'accion': 'CAMBIAR_CONTEXTO_MULTI_APP', 'esquema': '{{form.esquema}}', 'app_id': '{{form.app_id}}', 'gemini_key': '{{form.gemini_key}}'}
                   ]
                 }
               ]

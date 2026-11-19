@@ -2,11 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'nucleo/puente_supabase.dart';
+import 'nucleo/librerias_maestras_sdui.dart';
 import 'motores/renderizador_atomico.dart';
 
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    LibreriasMaestrasSdui.inicializarGlobales(); // <- INICIA EL PUENTE MAESTRO
+
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,

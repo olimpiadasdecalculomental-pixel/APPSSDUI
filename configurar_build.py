@@ -8,16 +8,20 @@ import subprocess
 LT = chr(60)
 GT = chr(62)
 
-PAQUETES_EN_IMPORT_38 = {
-    'http', 'crypto', 'path', 'uuid', 'flutter_riverpod', 'expressions',
-    'math_expressions', 'equations', 'units_converter', 'latlong2', 'timezone',
-    'json_path', 'csv', 'archive', 'web_socket_channel', 'mqtt_client',
+PAQUETES_PROTEGIDOS_49 = {
+    'json_dynamic_widget', 'dart_eval', 'json_schema', 'flutter_riverpod',
     'google_fonts', 'lucide_icons_flutter', 'ionicons', 'dotted_border',
-    'shimmer', 'flutter_animate', 'confetti', 'lottie', 'fl_chart',
-    'syncfusion_flutter_charts', 'qr_flutter', 'table_calendar',
-    'drag_and_drop_lists', 'screenshot', 'flutter_math_fork',
-    'flutter_markdown', 'data_table_2', 'flutter_staggered_grid_view',
-    'dropdown_button2', 'awesome_dialog', 'toastification', 'pdf'
+    'shimmer', 'flutter_animate', 'confetti', 'lottie',
+    'drag_and_drop_lists', 'infinite_scroll_pagination',
+    'flutter_staggered_grid_view', 'toastification', 'data_table_2',
+    'animated_tree_view', 'dropdown_button2', 'table_calendar',
+    'screenshot', 'qr_flutter',
+    'fl_chart', 'syncfusion_flutter_charts', 'graphview', 'flutter_map',
+    'http', 'web_socket_channel', 'mqtt_client', 'hive_ce', 'path',
+    'crypto', 'json_path', 'diff_match_patch', 'csv', 'archive',
+    'uuid', 'faker', 'pdf', 'flutter_markdown', 'flutter_highlight',
+    'highlight', 'flutter_math_fork', 'math_expressions', 'equations',
+    'units_converter', 'expressions', 'latlong2', 'timezone'
 }
 
 def es_png_rgba_valido(data: bytes) -> bool:
@@ -240,11 +244,6 @@ def configurar_android():
 
 def resolver_pubspec():
     pub_path = pathlib.Path('pubspec.yaml')
-    if pub_path.exists():
-        txt = pub_path.read_text(encoding='utf-8')
-        txt = re.sub(r'^\s*stac:\s*\^0\.7\.0\s*$', '  # stac: ^0.7.0', txt, flags=re.M)
-        pub_path.write_text(txt, encoding='utf-8')
-
     for intento in range(20):
         r = subprocess.run(['flutter', 'pub', 'get'], capture_output=True, text=True)
         if r.returncode == 0:
@@ -259,7 +258,7 @@ def resolver_pubspec():
             for pkg in candidatos:
                 if pkg in ('flutter', 'flutter_test', 'super_apk_sdui_universal'):
                     continue
-                if pkg not in PAQUETES_EN_IMPORT_38:
+                if pkg not in PAQUETES_PROTEGIDOS_49:
                     nuevo_ptxt = re.sub(rf'^\s*{pkg}:\s*[^\n]+$', f'  # {pkg}: auto-omitido', ptxt, flags=re.M)
                 else:
                     nuevo_ptxt = re.sub(rf'^(\s*{pkg}:)\s*\^?[0-9][^\n]*$', r'\1 any', ptxt, flags=re.M)

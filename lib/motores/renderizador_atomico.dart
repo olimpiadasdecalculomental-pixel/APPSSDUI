@@ -2,6 +2,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:dotted_border/dotted_border.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:lottie/lottie.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:data_table_2/data_table_2.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 import '../nucleo/estado_global.dart';
 import '../nucleo/puente_supabase.dart';
 import '../nucleo/ejecutor_flujos.dart';
@@ -77,114 +87,137 @@ class _LienzoUniversalSduiState extends State {
     }
   }
 
+  Map _parsearArbolActual(int idx) {
+    if (_pantallas.isEmpty || idx < 0 || idx >= _pantallas.length) return {};
+    final Map reg = Map.from(_pantallas[idx] as Map);
+    final dynamic rawArbol = reg['arbol_json'];
+    if (rawArbol is Map) return Map.from(rawArbol);
+    if (rawArbol is String && rawArbol.trim().isNotEmpty) {
+      try {
+        final dec = jsonDecode(rawArbol.trim());
+        if (dec is Map) return Map.from(dec);
+      } catch (_) {}
+    }
+    return {};
+  }
+
   @override
   Widget build(BuildContext context) {
     final estado = EstadoGlobalSdui.instancia;
     final Color colPrim = RenderizadorAtomicoSdui.parsearColor(estado.leerRuta('sistema.color_primario')?.toString(), const Color(0xFF00FF66));
     final Color colSec = RenderizadorAtomicoSdui.parsearColor(estado.leerRuta('sistema.color_secundario')?.toString(), const Color(0xFF00F3FF));
     final int idxSeguro = _pantallas.isEmpty ? 0 : _idxPantalla.clamp(0, _pantallas.length - 1);
+    final Map arbolActual = _parsearArbolActual(idxSeguro);
+    
+    // LOGICA PANTALLA COMPLETA REAL
+    final bool ocultarAppBar = arbolActual['pantalla_completa'] == true ||
+        arbolActual['ocultar_appbar'] == true ||
+        estado.leerRuta('sistema.pantalla_completa') == true;
+
+    if (ocultarAppBar) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+
     final String tituloActual = _pantallas.isNotEmpty ? ((_pantallas[idxSeguro] as Map)['titulo']?.toString() ?? 'SDUI Universal') : '0 pantallas activas';
     final String rolActivo = estado.leerRuta('sesion.rol')?.toString() ?? 'TODOS';
 
     return Scaffold(
       backgroundColor: const Color(0xFF050814),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF091024),
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(tituloActual, style: TextStyle(color: colPrim, fontSize: 13.5, fontWeight: FontWeight.w900)),
-            Text('Esq: ${PuenteSupabaseSdui.esquemaActivo} · App: ${PuenteSupabaseSdui.appIdActivo} · Rol: $rolActivo · Pag ${_pantallas.isEmpty ? 0 : idxSeguro + 1}/${_pantallas.length}',
-                style: const TextStyle(color: Colors.white60, fontSize: 10)),
-          ],
-        ),
-        actions: [
-          IconButton(tooltip: 'Sincronizar JSON con Hash MD5', icon: Icon(Icons.sync, color: colSec), onPressed: _sincronizarPantallas),
-        ],
-      ),
-      body: Stack(
-        children: [
-          if (_cargando)
-            Center(child: CircularProgressIndicator(color: colPrim))
-          else if (_pantallas.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.layers_clear, color: colSec, size: 42),
-                    const SizedBox(height: 12),
-                    const Text('0 pantallas activas en este esquema/app', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: colPrim, foregroundColor: Colors.black),
-                      icon: const Icon(Icons.sync, size: 18),
-                      label: const Text('REINTENTAR SINCRONIZACION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-                      onPressed: _sincronizarPantallas,
-                    ),
-                  ],
-                ),
+      appBar: ocultarAppBar
+          ? null
+          : AppBar(
+              backgroundColor: const Color(0xFF091024),
+              elevation: 0,
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(tituloActual, style: GoogleFonts.orbitron(color: colPrim, fontSize: 13, fontWeight: FontWeight.w900)),
+                  Text('Esq: ${PuenteSupabaseSdui.esquemaActivo} · App: ${PuenteSupabaseSdui.appIdActivo} · Rol: $rolActivo · Pag ${_pantallas.isEmpty ? 0 : idxSeguro + 1}/${_pantallas.length}',
+                      style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                ],
               ),
-            )
-          else
-            PageView.builder(
-              controller: _pageCtrl,
-              itemCount: _pantallas.length,
-              onPageChanged: (i) {
-                if (i >= 0 && i < _pantallas.length) setState(() => _idxPantalla = i);
-              },
-              itemBuilder: (ctx, idx) {
-                if (idx < 0 || idx >= _pantallas.length) return const SizedBox.shrink();
-                final Map reg = Map.from(_pantallas[idx] as Map);
-                Map arbol = {};
-                final dynamic rawArbol = reg['arbol_json'];
-                if (rawArbol is Map) {
-                  arbol = Map.from(rawArbol);
-                } else if (rawArbol is String && rawArbol.trim().isNotEmpty) {
-                  try {
-                    final dec = jsonDecode(rawArbol.trim());
-                    if (dec is Map) arbol = Map.from(dec);
-                  } catch (_) {}
-                }
-                return RefreshIndicator(
-                  color: colPrim,
-                  onRefresh: _sincronizarPantallas,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(14),
-                    child: AnimatedBuilder(
-                      animation: estado,
-                      builder: (context, _) => RenderizadorAtomicoSdui.construirNodo(
-                        context: context,
-                        nodoRaw: arbol,
-                        estado: estado,
-                        onNavegar: _navegarAPantalla,
-                        onRecargar: _sincronizarPantallas,
-                        onFeedback: _mostrarFeedback,
+              actions: [
+                IconButton(tooltip: 'Sincronizar JSON', icon: Icon(Icons.sync, color: colSec), onPressed: _sincronizarPantallas),
+              ],
+            ),
+      body: SafeArea(
+        top: !ocultarAppBar,
+        bottom: !ocultarAppBar,
+        child: Stack(
+          children: [
+            if (_cargando)
+              Center(child: CircularProgressIndicator(color: colPrim))
+            else if (_pantallas.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.layers_clear, color: colSec, size: 42),
+                      const SizedBox(height: 12),
+                      const Text('0 pantallas activas en este esquema/app', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: colPrim, foregroundColor: Colors.black),
+                        icon: const Icon(Icons.sync, size: 18),
+                        label: const Text('REINTENTAR SINCRONIZACION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+                        onPressed: _sincronizarPantallas,
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              PageView.builder(
+                controller: _pageCtrl,
+                itemCount: _pantallas.length,
+                onPageChanged: (i) {
+                  if (i >= 0 && i < _pantallas.length) setState(() => _idxPantalla = i);
+                },
+                itemBuilder: (ctx, idx) {
+                  if (idx < 0 || idx >= _pantallas.length) return const SizedBox.shrink();
+                  final Map arbol = _parsearArbolActual(idx);
+                  return RefreshIndicator(
+                    color: colPrim,
+                    onRefresh: _sincronizarPantallas,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(14),
+                      child: AnimatedBuilder(
+                        animation: estado,
+                        builder: (context, _) => RenderizadorAtomicoSdui.construirNodo(
+                          context: context,
+                          nodoRaw: arbol,
+                          estado: estado,
+                          onNavegar: _navegarAPantalla,
+                          onRecargar: _sincronizarPantallas,
+                          onFeedback: _mostrarFeedback,
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
-          if (_toastFeedback.isNotEmpty)
-            Positioned(
-              bottom: 16,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0A1428),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: colPrim, width: 1.5),
-                ),
-                child: Text(_toastFeedback, textAlign: TextAlign.center, style: TextStyle(color: colPrim, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                  );
+                },
               ),
-            ),
-        ],
+            if (_toastFeedback.isNotEmpty)
+              Positioned(
+                bottom: 16,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0A1428),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: colPrim, width: 1.5),
+                  ),
+                  child: Text(_toastFeedback, textAlign: TextAlign.center, style: TextStyle(color: colPrim, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -274,6 +307,136 @@ class RenderizadorAtomicoSdui {
       case 'stack':
         return Stack(
           children: hijosRaw.map((h) => h is Map ? construirNodo(context: context, nodoRaw: Map.from(h), estado: estado, onNavegar: onNavegar, onRecargar: onRecargar, onFeedback: onFeedback) : const SizedBox.shrink()).toList(),
+        );
+
+      case 'lottie':
+        final String urlAnm = estado.interpolarTexto(nodoRaw['url']?.toString() ?? '');
+        final double hLottie = double.tryParse(nodoRaw['altura']?.toString() ?? '150') ?? 150.0;
+        if (urlAnm.isEmpty) return const SizedBox.shrink();
+        return SizedBox(
+          height: hLottie,
+          child: urlAnm.startsWith('http') ? Lottie.network(urlAnm) : Lottie.asset(urlAnm),
+        );
+
+      case 'markdown':
+        final String mdText = estado.interpolarTexto(nodoRaw['data']?.toString() ?? nodoRaw['texto']?.toString() ?? '');
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: MarkdownBody(
+            data: mdText,
+            styleSheet: MarkdownStyleSheet(
+              p: const TextStyle(color: Colors.white, fontSize: 13),
+              h1: const TextStyle(color: Color(0xFF00FF66), fontSize: 20, fontWeight: FontWeight.bold),
+              h2: const TextStyle(color: Color(0xFF00F3FF), fontSize: 18, fontWeight: FontWeight.bold),
+              code: const TextStyle(color: Color(0xFFFFD700), backgroundColor: Color(0xFF142033), fontFamily: 'monospace'),
+            ),
+          ),
+        );
+
+      case 'latex':
+      case 'math':
+        final String mathText = estado.interpolarTexto(nodoRaw['data']?.toString() ?? nodoRaw['formula']?.toString() ?? 'x^2');
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Center(
+            child: Math.tex(
+              mathText,
+              textStyle: const TextStyle(color: Color(0xFF00FF66), fontSize: 18),
+            ),
+          ),
+        );
+
+      case 'dropdown':
+        final List opciones = (nodoRaw['opciones'] as List?)?.map((e) => e.toString()).toList() ?? ['Opcion 1'];
+        final String campo = nodoRaw['guardar_en']?.toString() ?? 'form.dropdown';
+        final String valActual = estado.leerRuta(campo)?.toString() ?? (opciones.isNotEmpty ? opciones.first : '');
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton2(
+              isExpanded: true,
+              hint: Text(nodoRaw['placeholder']?.toString() ?? 'Selecciona...', style: const TextStyle(color: Colors.white54)),
+              items: opciones.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(color: Colors.white, fontSize: 13)))).toList(),
+              value: opciones.contains(valActual) ? valActual : null,
+              onChanged: (v) {
+                if (v != null) estado.escribirRuta(campo, v, notificar: true);
+              },
+              buttonStyleData: ButtonStyleData(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(color: const Color(0xFF142033), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF00F3FF))),
+              ),
+              dropdownStyleData: DropdownStyleData(
+                decoration: BoxDecoration(color: const Color(0xFF0B132B), borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ),
+        );
+
+      case 'datatable':
+        final List cols = (nodoRaw['columnas'] as List?) ?? ['ID', 'Dato'];
+        final List filas = (nodoRaw['filas'] as List?) ?? [];
+        return Container(
+          height: double.tryParse(nodoRaw['altura']?.toString() ?? '250') ?? 250,
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(color: const Color(0xFF0B132B), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFFFD700))),
+          child: DataTable2(
+            columnSpacing: 12,
+            horizontalMargin: 12,
+            minWidth: cols.length * 100.0,
+            columns: cols.map((c) => DataColumn2(label: Text(c.toString(), style: const TextStyle(color: Color(0xFF00FF66), fontWeight: FontWeight.bold)))).toList(),
+            rows: filas.map((f) {
+              final List celdas = (f is List) ? f : [f.toString()];
+              return DataRow(cells: celdas.map((c) => DataCell(Text(estado.interpolarTexto(c.toString()), style: const TextStyle(color: Colors.white)))).toList());
+            }).toList(),
+          ),
+        );
+
+      case 'mapa':
+      case 'flutter_map':
+        final double lat = double.tryParse(estado.interpolarTexto(nodoRaw['lat']?.toString() ?? '-17.9647')) ?? -17.9647;
+        final double lng = double.tryParse(estado.interpolarTexto(nodoRaw['lng']?.toString() ?? '-67.1060')) ?? -67.1060;
+        final double zoom = double.tryParse(nodoRaw['zoom']?.toString() ?? '14.5') ?? 14.5;
+        final double altMapa = double.tryParse(nodoRaw['altura']?.toString() ?? '220') ?? 220.0;
+        return Container(
+          height: altMapa,
+          margin: const EdgeInsets.only(bottom: 12),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF00F3FF), width: 1.5)),
+          child: FlutterMap(
+            options: MapOptions(initialCenter: LatLng(lat, lng), initialZoom: zoom),
+            children: [
+              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.logicasdui.superapk'),
+            ],
+          ),
+        );
+
+      case 'shimmer':
+        final String txtShimmer = estado.interpolarTexto(nodoRaw['texto']?.toString() ?? 'Sincronizando datos...');
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Shimmer.fromColors(
+            baseColor: const Color(0xFF00F3FF),
+            highlightColor: const Color(0xFF00FF66),
+            child: Text(txtShimmer, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+          ),
+        );
+
+      case 'dotted_card':
+        final Color colDot = parsearColor(nodoRaw['color_borde']?.toString(), const Color(0xFFFFD700));
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: DottedBorder(
+            color: colDot,
+            strokeWidth: 1.5,
+            dashPattern: const [6, 4],
+            borderType: BorderType.RRect,
+            radius: const Radius.circular(12),
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: hijosRaw.map((h) => h is Map ? construirNodo(context: context, nodoRaw: Map.from(h), estado: estado, onNavegar: onNavegar, onRecargar: onRecargar, onFeedback: onFeedback) : const SizedBox.shrink()).toList(),
+            ),
+          ),
         );
 
       case 'image':
