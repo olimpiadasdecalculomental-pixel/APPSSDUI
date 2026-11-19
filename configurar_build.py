@@ -8,20 +8,18 @@ import subprocess
 LT = chr(60)
 GT = chr(62)
 
-PAQUETES_PROTEGIDOS_49 = {
-    'json_dynamic_widget', 'dart_eval', 'json_schema', 'flutter_riverpod',
-    'google_fonts', 'lucide_icons_flutter', 'ionicons', 'dotted_border',
-    'shimmer', 'flutter_animate', 'confetti', 'lottie',
+PAQUETES_PROTEGIDOS_45 = {
+    'flutter_riverpod', 'google_fonts', 'lucide_icons_flutter', 'ionicons',
+    'dotted_border', 'shimmer', 'flutter_animate', 'confetti', 'lottie',
     'drag_and_drop_lists', 'infinite_scroll_pagination',
     'flutter_staggered_grid_view', 'toastification', 'data_table_2',
     'animated_tree_view', 'dropdown_button2', 'table_calendar',
-    'screenshot', 'qr_flutter',
-    'fl_chart', 'syncfusion_flutter_charts', 'graphview', 'flutter_map',
-    'http', 'web_socket_channel', 'mqtt_client', 'hive_ce', 'path',
-    'crypto', 'json_path', 'diff_match_patch', 'csv', 'archive',
-    'uuid', 'faker', 'pdf', 'flutter_markdown', 'flutter_highlight',
-    'highlight', 'flutter_math_fork', 'math_expressions', 'equations',
-    'units_converter', 'expressions', 'latlong2', 'timezone'
+    'screenshot', 'qr_flutter', 'fl_chart', 'syncfusion_flutter_charts',
+    'graphview', 'flutter_map', 'http', 'web_socket_channel', 'mqtt_client',
+    'hive_ce', 'path', 'crypto', 'json_path', 'diff_match_patch', 'csv',
+    'archive', 'uuid', 'faker', 'pdf', 'flutter_markdown', 'flutter_highlight',
+    'highlight', 'math_expressions', 'equations', 'units_converter',
+    'expressions', 'latlong2', 'timezone'
 }
 
 def es_png_rgba_valido(data: bytes) -> bool:
@@ -258,7 +256,7 @@ def resolver_pubspec():
             for pkg in candidatos:
                 if pkg in ('flutter', 'flutter_test', 'super_apk_sdui_universal'):
                     continue
-                if pkg not in PAQUETES_PROTEGIDOS_49:
+                if pkg not in PAQUETES_PROTEGIDOS_45:
                     nuevo_ptxt = re.sub(rf'^\s*{pkg}:\s*[^\n]+$', f'  # {pkg}: auto-omitido', ptxt, flags=re.M)
                 else:
                     nuevo_ptxt = re.sub(rf'^(\s*{pkg}:)\s*\^?[0-9][^\n]*$', r'\1 any', ptxt, flags=re.M)

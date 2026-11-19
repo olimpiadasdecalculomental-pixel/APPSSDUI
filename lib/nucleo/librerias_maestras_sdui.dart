@@ -1,11 +1,8 @@
 // =============================================================================
-// PUENTE MAESTRO DE IMPORTACIONES: 48 LIBRERÍAS (ESTABLES PARA FLUTTER 3.29.0)
+// PUENTE MAESTRO DE IMPORTACIONES (45 LIBRERÍAS PURAS COMPATIBLES CON 3.29.0)
 // =============================================================================
 
 import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod_pkg;
-import 'package:json_dynamic_widget/json_dynamic_widget.dart' as jdw_pkg;
-import 'package:dart_eval/dart_eval.dart' as eval_pkg;
-import 'package:json_schema/json_schema.dart' as schema_pkg;
 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -62,9 +59,6 @@ class LibreriasMaestrasSdui {
   static void inicializarGlobales() {
     final dynamic testReferencia = [
       riverpod_pkg.ProviderContainer,
-      jdw_pkg.JsonWidgetRegistry,
-      eval_pkg.Compiler,
-      schema_pkg.JsonSchema,
       GoogleFonts.roboto,
       LucideIcons.home,
       Ionicons.home,
