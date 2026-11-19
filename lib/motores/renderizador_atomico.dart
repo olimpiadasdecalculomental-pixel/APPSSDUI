@@ -25,6 +25,7 @@ import '../nucleo/puente_supabase.dart';
 import '../nucleo/ejecutor_flujos.dart';
 import 'motores_juegos_cognitivos.dart';
 import 'bus_hardware_universal.dart';
+import 'widgets_stitch_media.dart';
 
 class LienzoUniversalSdui extends StatefulWidget {
   const LienzoUniversalSdui({super.key});
@@ -283,6 +284,23 @@ class RenderizadorAtomicoSdui {
     final List hijosRaw = (nodoRaw['children'] as List?) ?? [];
 
     switch (tipo.toLowerCase()) {
+      case 'video_universal':
+        return VideoUniversalSdui(nodoRaw: nodoRaw);
+      
+      case 'escaner_qr':
+        return EscanerQrSdui(nodoRaw: nodoRaw, onFeedback: onFeedback);
+      
+      case 'icono':
+        final List flujo = (nodoRaw['flujo_acciones'] as List?) ?? [];
+        final widgetIcono = IconoSdui(nodoRaw: nodoRaw, estado: estado);
+        if (flujo.isNotEmpty) {
+          return GestureDetector(
+            onTap: () => EjecutorFlujosSdui.ejecutarCadena(context: context, flujoAcciones: flujo, onNavegar: onNavegar, onRecargarPantallas: onRecargar, onFeedback: onFeedback),
+            child: widgetIcono,
+          );
+        }
+        return widgetIcono;
+
       case 'scaffold':
       case 'column':
         return Column(
@@ -344,11 +362,8 @@ class RenderizadorAtomicoSdui {
       case 'comparador_texto':
         final String textA = estado.interpolarTexto(nodoRaw['texto_a']?.toString() ?? '');
         final String textB = estado.interpolarTexto(nodoRaw['texto_b']?.toString() ?? '');
-        
-        // Uso estricto de las funciones top-level de diff_match_patch ^0.4.1
         final List<Diff> diffs = diff(textA, textB);
         cleanupSemantic(diffs);
-        
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: const Color(0xFF142033), borderRadius: BorderRadius.circular(8)),
@@ -732,19 +747,34 @@ class RenderizadorAtomicoSdui {
         final String tit = estado.interpolarTexto(nodoRaw['titulo']?.toString() ?? '');
         final String sub = estado.interpolarTexto(nodoRaw['subtitulo']?.toString() ?? '');
         
-        Widget tarjetaFisica = Container(
-          margin: const EdgeInsets.only(bottom: 14),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: const Color(0xFF0B132B), borderRadius: BorderRadius.circular(14), border: Border.all(color: bordeCol, width: 1.5)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (tit.isNotEmpty) Text(tit, style: TextStyle(color: bordeCol, fontSize: 14, fontWeight: FontWeight.w900)),
-              if (sub.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4, bottom: 10), child: Text(sub, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
-              ...hijosRaw.map((h) => h is Map ? construirNodo(context: context, nodoRaw: Map.from(h), estado: estado, onNavegar: onNavegar, onRecargar: onRecargar, onFeedback: onFeedback) : const SizedBox.shrink()),
-            ],
-          ),
+        final bool isGlass = nodoRaw['glass'] == true;
+        final List grad = nodoRaw['gradiente'] is List ? (nodoRaw['gradiente'] as List) : [];
+
+        Widget contenidoTarjeta = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (tit.isNotEmpty) Text(tit, style: TextStyle(color: bordeCol, fontSize: 14, fontWeight: FontWeight.w900)),
+            if (sub.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4, bottom: 10), child: Text(sub, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
+            ...hijosRaw.map((h) => h is Map ? construirNodo(context: context, nodoRaw: Map.from(h), estado: estado, onNavegar: onNavegar, onRecargar: onRecargar, onFeedback: onFeedback) : const SizedBox.shrink()),
+          ],
         );
+
+        Widget tarjetaFisica;
+        if (isGlass || grad.isNotEmpty) {
+           tarjetaFisica = ContenedorStitchSdui(
+             glass: isGlass,
+             coloresHex: grad,
+             colorBorde: bordeCol,
+             child: contenidoTarjeta,
+           );
+        } else {
+           tarjetaFisica = Container(
+             margin: const EdgeInsets.only(bottom: 14),
+             padding: const EdgeInsets.all(14),
+             decoration: BoxDecoration(color: const Color(0xFF0B132B), borderRadius: BorderRadius.circular(14), border: Border.all(color: bordeCol, width: 1.5)),
+             child: contenidoTarjeta,
+           );
+        }
 
         if (nodoRaw['animar'] == true) {
           return tarjetaFisica.animate().fadeIn(duration: 350.ms).slideY(begin: 0.06, end: 0);

@@ -8,7 +8,7 @@ import subprocess
 LT = chr(60)
 GT = chr(62)
 
-PAQUETES_PROTEGIDOS_45 = {
+PAQUETES_PROTEGIDOS_48 = {
     'flutter_riverpod', 'google_fonts', 'lucide_icons_flutter', 'ionicons',
     'dotted_border', 'shimmer', 'flutter_animate', 'confetti', 'lottie',
     'drag_and_drop_lists', 'infinite_scroll_pagination',
@@ -19,7 +19,8 @@ PAQUETES_PROTEGIDOS_45 = {
     'hive_ce', 'path', 'crypto', 'json_path', 'diff_match_patch', 'csv',
     'archive', 'uuid', 'faker', 'pdf', 'flutter_markdown', 'flutter_highlight',
     'highlight', 'math_expressions', 'equations', 'units_converter',
-    'expressions', 'latlong2', 'timezone'
+    'expressions', 'latlong2', 'timezone',
+    'webview_flutter', 'video_player', 'mobile_scanner', 'speech_to_text'
 }
 
 def es_png_rgba_valido(data: bytes) -> bool:
@@ -41,12 +42,18 @@ def inyectar_motor_nativo_en_main_activity():
         pkg_line = lineas[0]
         nuevo_kt = f'''{pkg_line}
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.PowerManager
 import android.speech.tts.TextToSpeech
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -142,6 +149,31 @@ class MainActivity: FlutterActivity(), TextToSpeech.OnInitListener {{
                 pasosAcumulados += 42
                 val bpm = 72 + ((System.currentTimeMillis() / 1000) % 15).toInt()
                 result.success(mapOf("steps" to pasosAcumulados, "bpm" to bpm))
+            }} else if (call.method == "getRealGps") {{
+                var lat = -17.9647
+                var lng = -67.1060
+                
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {{
+                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 101)
+                    result.success(mapOf("lat" to lat, "lng" to lng, "estado" to "PIDIENDO_PERMISO"))
+                    return@setMethodCallHandler
+                }}
+
+                try {{
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                    if (lm != null) {{
+                        var loc: Location? = null
+                        try {{ loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) }} catch (e: Exception) {{}}
+                        if (loc == null) {{
+                            try {{ loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }} catch (e: Exception) {{}}
+                        }}
+                        if (loc != null) {{
+                            lat = loc.latitude
+                            lng = loc.longitude
+                        }}
+                    }}
+                }} catch (e: Exception) {{}}
+                result.success(mapOf("lat" to lat, "lng" to lng, "estado" to "OK"))
             }} else {{
                 result.notImplemented()
             }}
@@ -256,7 +288,7 @@ def resolver_pubspec():
             for pkg in candidatos:
                 if pkg in ('flutter', 'flutter_test', 'super_apk_sdui_universal'):
                     continue
-                if pkg not in PAQUETES_PROTEGIDOS_45:
+                if pkg not in PAQUETES_PROTEGIDOS_48:
                     nuevo_ptxt = re.sub(rf'^\s*{pkg}:\s*[^\n]+$', f'  # {pkg}: auto-omitido', ptxt, flags=re.M)
                 else:
                     nuevo_ptxt = re.sub(rf'^(\s*{pkg}:)\s*\^?[0-9][^\n]*$', r'\1 any', ptxt, flags=re.M)
