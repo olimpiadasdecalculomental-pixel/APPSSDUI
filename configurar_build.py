@@ -31,12 +31,20 @@ def es_png_rgba_valido(data: bytes) -> bool:
     return False
 
 def arreglar_repositorios_gradle():
+    # 1. Asegurar mavenCentral para evitar errores de red
     for f in ['android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts']:
         p = pathlib.Path(f)
         if p.exists():
             t = p.read_text(encoding='utf-8')
             if 'mavenCentral()' not in t:
                 t = re.sub(r'(google\(\))', r'\1\n        mavenCentral()', t)
+            
+            # 2. Forzar Kotlin 2.1.0 para compatibilidad con mobile_scanner
+            # Si es settings.gradle (Flutter 3.19+):
+            t = re.sub(r'(id\s*["\']org\.jetbrains\.kotlin\.android["\']\s*version\s*["\']).*?(["\'])', r'\g<1>2.1.0\g<2>', t)
+            # Si es build.gradle (Flutter antiguo):
+            t = re.sub(r'(ext\.kotlin_version\s*=\s*["\']).*?(["\'])', r'\g<1>2.1.0\g<2>', t)
+            
             p.write_text(t, encoding='utf-8')
 
 def inyectar_motor_nativo_en_main_activity():
