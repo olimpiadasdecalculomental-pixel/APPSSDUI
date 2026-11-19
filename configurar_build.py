@@ -31,37 +31,51 @@ def es_png_rgba_valido(data: bytes) -> bool:
     return False
 
 def forzar_kotlin_version():
-    # settings.gradle (Flutter 3.19+)
+    # settings.gradle y settings.gradle.kts (Flutter 3.19+)
     for f in ['android/settings.gradle', 'android/settings.gradle.kts']:
         p = pathlib.Path(f)
         if p.exists():
+            es_kts = str(p).endswith('.kts')
             lineas = p.read_text(encoding='utf-8').splitlines()
             nuevas_lineas = []
             for l in lineas:
                 if 'org.jetbrains.kotlin.android' in l and 'version' in l:
-                    # Remplaza toda la linea conservando apply false si existe
-                    if 'apply false' in l:
-                        nuevas_lineas.append('    id "org.jetbrains.kotlin.android" version "2.1.0" apply false')
+                    # Inyección quirúrgica respetando la sintaxis del lenguaje
+                    if es_kts:
+                        if 'apply false' in l:
+                            nuevas_lineas.append('    id("org.jetbrains.kotlin.android") version "2.1.0" apply false')
+                        else:
+                            nuevas_lineas.append('    id("org.jetbrains.kotlin.android") version "2.1.0"')
                     else:
-                        nuevas_lineas.append('    id "org.jetbrains.kotlin.android" version "2.1.0"')
+                        if 'apply false' in l:
+                            nuevas_lineas.append('    id "org.jetbrains.kotlin.android" version "2.1.0" apply false')
+                        else:
+                            nuevas_lineas.append('    id "org.jetbrains.kotlin.android" version "2.1.0"')
                 else:
                     nuevas_lineas.append(l)
             p.write_text('\n'.join(nuevas_lineas), encoding='utf-8')
 
-    # build.gradle (Flutter Antiguo)
+    # build.gradle y build.gradle.kts (Flutter Antiguo)
     for f in ['android/build.gradle', 'android/build.gradle.kts']:
         p = pathlib.Path(f)
         if p.exists():
+            es_kts = str(p).endswith('.kts')
             lineas = p.read_text(encoding='utf-8').splitlines()
             nuevas_lineas = []
             injected = False
             for l in lineas:
-                if 'ext.kotlin_version' in l:
-                    nuevas_lineas.append("    ext.kotlin_version = '2.1.0'")
+                if 'ext.kotlin_version' in l or 'extra["kotlin_version"]' in l:
+                    if es_kts:
+                        nuevas_lineas.append('    extra["kotlin_version"] = "2.1.0"')
+                    else:
+                        nuevas_lineas.append("    ext.kotlin_version = '2.1.0'")
                     injected = True
                 elif 'buildscript {' in l and not injected:
                     nuevas_lineas.append(l)
-                    nuevas_lineas.append("    ext.kotlin_version = '2.1.0'")
+                    if es_kts:
+                        nuevas_lineas.append('    extra["kotlin_version"] = "2.1.0"')
+                    else:
+                        nuevas_lineas.append("    ext.kotlin_version = '2.1.0'")
                     injected = True
                 else:
                     nuevas_lineas.append(l)
@@ -317,16 +331,13 @@ def configurar_android():
         if gp.exists():
             gtxt = gp.read_text(encoding='utf-8')
             
-            # Limpiamos NDK viejo
             gtxt = re.sub(r'^\s*ndkVersion\s*.*?$', '', gtxt, flags=re.MULTILINE)
             
-            # Forzamos minSdk 24 y compileSdk 36
             gtxt = re.sub(r'minSdkVersion\s+(flutter\.minSdkVersion|\d+)', r'minSdkVersion 24', gtxt)
             gtxt = re.sub(r'minSdk\s*=\s*(flutter\.minSdkVersion|\d+)', r'minSdk = 24', gtxt)
             gtxt = re.sub(r'compileSdkVersion\s+(flutter\.compileSdkVersion|\d+)', r'compileSdkVersion 36', gtxt)
             gtxt = re.sub(r'compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)', r'compileSdk = 36', gtxt)
             
-            # Inyectamos el NDK 27 despues del 36
             gtxt = re.sub(r'(compileSdkVersion\s+36)', r'\1\n        ndkVersion "27.0.12077973"', gtxt)
             gtxt = re.sub(r'(compileSdk\s*=\s*36)', r'\1\n        ndkVersion = "27.0.12077973"', gtxt)
 
