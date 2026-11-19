@@ -31,7 +31,6 @@ def es_png_rgba_valido(data: bytes) -> bool:
     return False
 
 def arreglar_repositorios_gradle():
-    # Obliga a Gradle a buscar en mavenCentral() para evitar el error de Kotlin 1.9.24
     for f in ['android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts']:
         p = pathlib.Path(f)
         if p.exists():
@@ -274,18 +273,26 @@ def configurar_android():
     arreglar_repositorios_gradle()
     inyectar_motor_nativo_en_main_activity()
 
-    for ruta_g in ['android/app/build.gradle', 'android/app/build.gradle.kts']:
+    for ruta_g in ['android/app/build.gradle', 'android/app/build.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts']:
         gp = pathlib.Path(ruta_g)
         if gp.exists():
             gtxt = gp.read_text(encoding='utf-8')
             
-            gtxt = re.sub(r'\s*ndkVersion\s*=?\s*["\']?[0-9.]+["\']?(?:\s*=\s*flutter\.ndkVersion)?', '', gtxt)
+            # Limpiamos cualquier rastro de NDK
+            gtxt = re.sub(r'^\s*ndkVersion\s*.*?$', '', gtxt, flags=re.MULTILINE)
             
-            gtxt = gtxt.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
-            gtxt = gtxt.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 24')
-            gtxt = gtxt.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 34\n        ndkVersion = "27.0.12077973"')
-            gtxt = gtxt.replace('compileSdkVersion flutter.compileSdkVersion', 'compileSdkVersion 34\n        ndkVersion "27.0.12077973"')
+            # Forzamos minSdk 24
+            gtxt = re.sub(r'minSdkVersion\s+(flutter\.minSdkVersion|\d+)', r'minSdkVersion 24', gtxt)
+            gtxt = re.sub(r'minSdk\s*=\s*(flutter\.minSdkVersion|\d+)', r'minSdk = 24', gtxt)
             
+            # Forzamos compileSdk 36
+            gtxt = re.sub(r'compileSdkVersion\s+(flutter\.compileSdkVersion|\d+)', r'compileSdkVersion 36', gtxt)
+            gtxt = re.sub(r'compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)', r'compileSdk = 36', gtxt)
+            
+            # Inyectamos el NDK 27 despues del 36
+            gtxt = re.sub(r'(compileSdkVersion\s+36)', r'\1\n        ndkVersion "27.0.12077973"', gtxt)
+            gtxt = re.sub(r'(compileSdk\s*=\s*36)', r'\1\n        ndkVersion = "27.0.12077973"', gtxt)
+
             gp.write_text(gtxt, encoding='utf-8')
 
 def resolver_pubspec():
