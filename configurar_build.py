@@ -263,22 +263,20 @@ def configurar_android():
 
     inyectar_motor_nativo_en_main_activity()
 
-    ndk_target = 'ndkVersion = "27.0.12077973"'
     for ruta_g in ['android/app/build.gradle', 'android/app/build.gradle.kts']:
         gp = pathlib.Path(ruta_g)
         if gp.exists():
             gtxt = gp.read_text(encoding='utf-8')
+            
+            # Limpiamos referencias de ndkVersion previas para evitar "Assignments are not expressions"
+            gtxt = re.sub(r'\s*ndkVersion\s*=?\s*["\']?[0-9.]+["\']?(?:\s*=\s*flutter\.ndkVersion)?', '', gtxt)
+            
+            # Forzamos los SDK mínimos robustos y el NDK en KTS / Gradle clásico
             gtxt = gtxt.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
             gtxt = gtxt.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 24')
+            gtxt = gtxt.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 34\n        ndkVersion = "27.0.12077973"')
+            gtxt = gtxt.replace('compileSdkVersion flutter.compileSdkVersion', 'compileSdkVersion 34\n        ndkVersion "27.0.12077973"')
             
-            # Buscar el bloque android { ... } para inyectar ndkVersion limpiamente
-            if re.search(r'ndkVersion\s*=?\s*["\'].*?["\']', gtxt):
-                gtxt = re.sub(r'ndkVersion\s*=?\s*["\'].*?["\']', ndk_target, gtxt)
-            else:
-                # Si no existe, lo inyectamos justo debajo de compileSdk
-                gtxt = re.sub(r'(compileSdk\s*=?\s*[\d]+|compileSdkVersion\s*=?\s*[\w.]+)', 
-                              rf'\1\n        {ndk_target}', gtxt)
-                
             gp.write_text(gtxt, encoding='utf-8')
 
 def resolver_pubspec():
