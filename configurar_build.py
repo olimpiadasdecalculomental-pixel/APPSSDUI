@@ -31,7 +31,6 @@ def es_png_rgba_valido(data: bytes) -> bool:
     return False
 
 def arreglar_repositorios_gradle():
-    # 1. Asegurar mavenCentral para evitar errores de red
     for f in ['android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts']:
         p = pathlib.Path(f)
         if p.exists():
@@ -39,10 +38,8 @@ def arreglar_repositorios_gradle():
             if 'mavenCentral()' not in t:
                 t = re.sub(r'(google\(\))', r'\1\n        mavenCentral()', t)
             
-            # 2. Forzar Kotlin 2.1.0 para compatibilidad con mobile_scanner
-            # Si es settings.gradle (Flutter 3.19+):
+            # Forzar Kotlin 2.1.0 en Python como respaldo
             t = re.sub(r'(id\s*["\']org\.jetbrains\.kotlin\.android["\']\s*version\s*["\']).*?(["\'])', r'\g<1>2.1.0\g<2>', t)
-            # Si es build.gradle (Flutter antiguo):
             t = re.sub(r'(ext\.kotlin_version\s*=\s*["\']).*?(["\'])', r'\g<1>2.1.0\g<2>', t)
             
             p.write_text(t, encoding='utf-8')
@@ -286,14 +283,12 @@ def configurar_android():
         if gp.exists():
             gtxt = gp.read_text(encoding='utf-8')
             
-            # Limpiamos cualquier rastro de NDK
+            # Limpiamos NDK viejo
             gtxt = re.sub(r'^\s*ndkVersion\s*.*?$', '', gtxt, flags=re.MULTILINE)
             
-            # Forzamos minSdk 24
+            # Forzamos minSdk 24 y compileSdk 36
             gtxt = re.sub(r'minSdkVersion\s+(flutter\.minSdkVersion|\d+)', r'minSdkVersion 24', gtxt)
             gtxt = re.sub(r'minSdk\s*=\s*(flutter\.minSdkVersion|\d+)', r'minSdk = 24', gtxt)
-            
-            # Forzamos compileSdk 36
             gtxt = re.sub(r'compileSdkVersion\s+(flutter\.compileSdkVersion|\d+)', r'compileSdkVersion 36', gtxt)
             gtxt = re.sub(r'compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)', r'compileSdk = 36', gtxt)
             
