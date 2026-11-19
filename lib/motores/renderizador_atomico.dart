@@ -682,8 +682,8 @@ class RenderizadorAtomicoSdui {
       case 'tabs':
         final List pestanas = (nodoRaw['tabs'] as List?) ?? ['Tab 1', 'Tab 2'];
         
-        // Ajustar hijos para que coincidan con la cantidad de pestañas (evita crash)
-        final List hijosAjustados = List.generate(pestanas.length, (idx) {
+        // Ajustar hijos para que coincidan con la cantidad de pestañas con TIPO ESTRICTO
+        final List<Widget> hijosAjustados = List<Widget>.generate(pestanas.length, (idx) {
           if (idx < hijosRaw.length && hijosRaw[idx] is Map) {
             return SingleChildScrollView(
               padding: const EdgeInsets.only(top: 10), 
