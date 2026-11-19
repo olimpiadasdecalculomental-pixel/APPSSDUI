@@ -9,7 +9,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lottie/lottie.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:data_table_2/data_table_2.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import '../nucleo/estado_global.dart';
@@ -109,7 +108,6 @@ class _LienzoUniversalSduiState extends State {
     final int idxSeguro = _pantallas.isEmpty ? 0 : _idxPantalla.clamp(0, _pantallas.length - 1);
     final Map arbolActual = _parsearArbolActual(idxSeguro);
     
-    // LOGICA PANTALLA COMPLETA REAL
     final bool ocultarAppBar = arbolActual['pantalla_completa'] == true ||
         arbolActual['ocultar_appbar'] == true ||
         estado.leerRuta('sistema.pantalla_completa') == true;
@@ -329,19 +327,6 @@ class RenderizadorAtomicoSdui {
               h1: const TextStyle(color: Color(0xFF00FF66), fontSize: 20, fontWeight: FontWeight.bold),
               h2: const TextStyle(color: Color(0xFF00F3FF), fontSize: 18, fontWeight: FontWeight.bold),
               code: const TextStyle(color: Color(0xFFFFD700), backgroundColor: Color(0xFF142033), fontFamily: 'monospace'),
-            ),
-          ),
-        );
-
-      case 'latex':
-      case 'math':
-        final String mathText = estado.interpolarTexto(nodoRaw['data']?.toString() ?? nodoRaw['formula']?.toString() ?? 'x^2');
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Center(
-            child: Math.tex(
-              mathText,
-              textStyle: const TextStyle(color: Color(0xFF00FF66), fontSize: 18),
             ),
           ),
         );

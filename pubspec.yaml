@@ -1,7 +1,7 @@
 name: super_apk_sdui_universal
 description: Super-APK Universal 100% SDUI - Motor Agnostico Multi-Esquema, Multi-App, APIs & Gemini
 publish_to: 'none'
-version: 4.3.0+1
+version: 4.4.0+1
 
 environment:
   sdk: ^3.5.0
@@ -10,13 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # 1. Nucleo SDUI, Estado y Evaluacion Dinamica
   json_dynamic_widget: ^7.0.6
   dart_eval: ^0.7.9
   json_schema: ^5.2.0
   flutter_riverpod: ^2.6.1
 
-  # 2. Diseno Moderno, Tipografia e Iconos Vectoriales
   google_fonts: ^6.2.1
   lucide_icons_flutter: ^1.2.5
   ionicons: ^0.2.2
@@ -26,7 +24,6 @@ dependencies:
   confetti: ^0.8.0
   lottie: ^3.1.3
 
-  # 3. Componentes UI, Tablas Masivas y Listas
   drag_and_drop_lists: ^0.4.2
   infinite_scroll_pagination: ^4.1.0
   flutter_staggered_grid_view: ^0.7.0
@@ -38,13 +35,11 @@ dependencies:
   screenshot: ^3.0.0
   qr_flutter: ^4.1.0
 
-  # 4. Graficos, Mapas y Diagramas
   fl_chart: ^0.69.0
   syncfusion_flutter_charts: ^27.1.58
   graphview: ^1.2.0
   flutter_map: ^7.0.2
 
-  # 5. Red, WebSockets, IoT MQTT y Utilidades Dart Puro
   http: ^1.2.2
   web_socket_channel: ^3.0.1
   mqtt_client: ^10.5.1
@@ -59,13 +54,10 @@ dependencies:
   faker: ^2.2.0
   pdf: ^3.11.1
 
-  # 6. Markdown, Codigo y Resaltado
   flutter_markdown: ^0.7.4+1
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0
 
-  # 7. Matematicas, Formulas LaTeX, Fisica y Fechas
-  flutter_math_fork: ^0.7.3
   math_expressions: ^2.6.0
   equations: ^5.0.2
   units_converter: ^3.0.2
