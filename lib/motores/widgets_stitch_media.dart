@@ -203,7 +203,7 @@ class IconoSdui extends StatelessWidget {
     
     IconData iconData = LucideIcons.circle;
     switch(nombre.toLowerCase()) {
-      case 'home': iconData = LucideIcons.home; break;
+      case 'home': iconData = Icons.home; break; 
       case 'user': iconData = LucideIcons.user; break;
       case 'settings': iconData = LucideIcons.settings; break;
       case 'camera': iconData = LucideIcons.camera; break;
