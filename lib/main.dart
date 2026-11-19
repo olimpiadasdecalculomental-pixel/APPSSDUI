@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as p;
+import 'package:toastification/toastification.dart';
 import 'nucleo/puente_supabase.dart';
 import 'nucleo/librerias_maestras_sdui.dart';
 import 'motores/renderizador_atomico.dart';
@@ -14,7 +15,16 @@ void main() {
     LibreriasMaestrasSdui.inicializarGlobales();
 
     try {
-      final String rutaHive = p.join('/data/user/0/com.example.appssdui/files', 'sdui_hive');
+      String nombrePaquete = 'com.example.super_apk_sdui_universal';
+      try {
+        final String cmdLine = File('/proc/self/cmdline').readAsStringSync();
+        final String paqueteDetectado = cmdLine.trim().replaceAll('\x00', '');
+        if (paqueteDetectado.isNotEmpty) {
+          nombrePaquete = paqueteDetectado;
+        }
+      } catch (_) {}
+
+      final String rutaHive = p.join('/data/user/0/$nombrePaquete/files', 'sdui_hive');
       final dir = Directory(rutaHive);
       if (!await dir.exists()) await dir.create(recursive: true);
       Hive.init(rutaHive);
@@ -58,13 +68,15 @@ class SuperApkUniversalSduiApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Super-APK Universal 100% SDUI',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF050814),
+    return ToastificationWrapper(
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Super-APK Universal 100% SDUI',
+        theme: ThemeData.dark().copyWith(
+          scaffoldBackgroundColor: const Color(0xFF050814),
+        ),
+        home: const LienzoUniversalSdui(),
       ),
-      home: const LienzoUniversalSdui(),
     );
   }
 }
