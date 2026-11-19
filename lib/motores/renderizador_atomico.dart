@@ -126,11 +126,13 @@ class _LienzoUniversalSduiState extends State<LienzoUniversalSdui> {
         arbolActual['ocultar_appbar'] == true ||
         estado.leerRuta('sistema.pantalla_completa') == true;
 
-    if (ocultarAppBar) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ocultarAppBar) {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      } else {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+    });
 
     final String tituloActual = _pantallas.isNotEmpty ? ((_pantallas[idxSeguro] as Map)['titulo']?.toString() ?? 'SDUI Universal') : '0 pantallas activas';
     final String rolActivo = estado.leerRuta('sesion.rol')?.toString() ?? 'TODOS';
@@ -679,6 +681,18 @@ class RenderizadorAtomicoSdui {
 
       case 'tabs':
         final List pestanas = (nodoRaw['tabs'] as List?) ?? ['Tab 1', 'Tab 2'];
+        
+        // Ajustar hijos para que coincidan con la cantidad de pestañas (evita crash)
+        final List hijosAjustados = List.generate(pestanas.length, (idx) {
+          if (idx < hijosRaw.length && hijosRaw[idx] is Map) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 10), 
+              child: construirNodo(context: context, nodoRaw: Map.from(hijosRaw[idx] as Map), estado: estado, onNavegar: onNavegar, onRecargar: onRecargar, onFeedback: onFeedback)
+            );
+          }
+          return const Center(child: Text('Sin contenido', style: TextStyle(color: Colors.white54)));
+        });
+
         return DefaultTabController(
           length: pestanas.length,
           child: Column(
@@ -693,7 +707,7 @@ class RenderizadorAtomicoSdui {
               SizedBox(
                 height: double.tryParse(nodoRaw['altura']?.toString() ?? '360') ?? 360,
                 child: TabBarView(
-                  children: hijosRaw.map((h) => h is Map ? SingleChildScrollView(padding: const EdgeInsets.only(top: 10), child: construirNodo(context: context, nodoRaw: Map.from(h), estado: estado, onNavegar: onNavegar, onRecargar: onRecargar, onFeedback: onFeedback)) : const SizedBox.shrink()).toList(),
+                  children: hijosAjustados,
                 ),
               ),
             ],
@@ -799,6 +813,7 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
   List _itemsRemotos = [];
   String? _siguienteCursor;
   bool _cargandoTop10 = false;
+  bool _hayMasItems = true;
   final Map _cantidadesStepper = {};
   final Set _checksActivos = {};
   final Map _switchesActivos = {};
@@ -812,21 +827,35 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
   }
 
   Future _consultarCursorTop10({bool reiniciar = false}) async {
+    if (_cargandoTop10 || (!reiniciar && !_hayMasItems)) return;
     setState(() => _cargandoTop10 = true);
+    
     final Map nodo = widget.nodoRaw;
     final String col = nodo['coleccion']?.toString() ?? 'RECORDS_COGNITIVOS';
+    
     final Map res = await PuenteSupabaseSdui.llamarRpcNano('nano_buscar_top10', {
       'p_app_id': PuenteSupabaseSdui.appIdActivo,
       'p_coleccion': col,
       'p_filtro': nodo['filtro'] ?? {},
       'p_cursor_fecha': reiniciar ? null : _siguienteCursor,
     });
+    
     if (!mounted) return;
     setState(() {
       _cargandoTop10 = false;
       if (res['items'] is List) {
-        _itemsRemotos = List.from(res['items'] as List);
+        final List nuevosItems = res['items'] as List;
+        
+        if (reiniciar) {
+          _itemsRemotos = List.from(nuevosItems);
+        } else {
+          _itemsRemotos.addAll(nuevosItems);
+        }
+        
         _siguienteCursor = res['siguiente_cursor']?.toString();
+        // Criterio inteligente de paginacion: Si me mandas menos de 10 o nulo, se acabó
+        _hayMasItems = _siguienteCursor != null && _siguienteCursor != 'null' && nuevosItems.length == 10;
+        
         EstadoGlobalSdui.instancia.escribirRuta('sistema.ultima_lista_top10', _itemsRemotos, notificar: false);
       }
     });
@@ -902,7 +931,7 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
                   IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF00FF66), size: 18), onPressed: () => _consultarCursorTop10(reiniciar: true)),
                 ],
               ),
-            if (_cargandoTop10)
+            if (_cargandoTop10 && _itemsRemotos.isEmpty)
               const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
             else if (_itemsRemotos.isEmpty)
               Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(widget.nodoRaw['texto_vacio']?.toString() ?? '0 registros encontrados.', style: const TextStyle(color: Colors.white60, fontSize: 11.5)))
@@ -916,16 +945,27 @@ class _ListaAtomicaUniversalWidgetState extends State<_ListaAtomicaUniversalWidg
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${it['propietario_id'] ?? ''} · [${it['estado'] ?? ''}] · ${it['datos'] ?? ''}', style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+                      Text('${it['propietario_id'] ?? ''} · [${it['estado'] ?? ''}]', style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text('${it['datos'] ?? ''}', style: const TextStyle(color: Colors.white, fontSize: 11.5)),
                       if (botonesFilaGlobal.isNotEmpty) _construirBotonesDeFila(context, it, botonesFilaGlobal),
                     ],
                   ),
                 );
               }),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: () => _consultarCursorTop10(reiniciar: false), child: Text(txtSig, style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11))),
-            ),
+              
+            if (_itemsRemotos.isNotEmpty)
+              Align(
+                alignment: Alignment.centerRight,
+                child: _hayMasItems 
+                    ? (_cargandoTop10 
+                        ? const Padding(padding: EdgeInsets.all(8.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) 
+                        : TextButton(onPressed: () => _consultarCursorTop10(reiniciar: false), child: Text(txtSig, style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11))))
+                    : const Padding(
+                        padding: EdgeInsets.only(top: 8.0, right: 8.0),
+                        child: Text('NO HAY MÁS RESULTADOS', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+              ),
           ],
         ),
       );

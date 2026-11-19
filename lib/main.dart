@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:toastification/toastification.dart';
 import 'nucleo/puente_supabase.dart';
 import 'nucleo/librerias_maestras_sdui.dart';
@@ -15,19 +15,8 @@ void main() {
     LibreriasMaestrasSdui.inicializarGlobales();
 
     try {
-      String nombrePaquete = 'com.example.super_apk_sdui_universal';
-      try {
-        final String cmdLine = File('/proc/self/cmdline').readAsStringSync();
-        final String paqueteDetectado = cmdLine.trim().replaceAll('\x00', '');
-        if (paqueteDetectado.isNotEmpty) {
-          nombrePaquete = paqueteDetectado;
-        }
-      } catch (_) {}
-
-      final String rutaHive = p.join('/data/user/0/$nombrePaquete/files', 'sdui_hive');
-      final dir = Directory(rutaHive);
-      if (!await dir.exists()) await dir.create(recursive: true);
-      Hive.init(rutaHive);
+      final dir = await getApplicationDocumentsDirectory();
+      Hive.init(dir.path);
     } catch (_) {
       Hive.init(Directory.systemTemp.path);
     }
@@ -56,7 +45,9 @@ void main() {
       );
     };
 
-    await PuenteSupabaseSdui.inicializarPuenteUniversal();
+    // No bloqueamos el arranque de la UI si no hay internet o tarda
+    PuenteSupabaseSdui.inicializarPuenteUniversal();
+
     runApp(const SuperApkUniversalSduiApp());
   }, (error, stack) {
     debugPrint('Escudo Global SDUI: $error');

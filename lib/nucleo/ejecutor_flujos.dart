@@ -10,11 +10,14 @@ import 'package:archive/archive.dart';
 import 'package:json_path/json_path.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:uuid/uuid.dart' as uuid_pkg;
 import 'estado_global.dart';
 import 'puente_supabase.dart';
 import '../motores/bus_hardware_universal.dart';
 
 class EjecutorFlujosSdui {
+  static const uuid_pkg.Uuid _uidGen = uuid_pkg.Uuid();
+
   static Future ejecutarCadena({
     required BuildContext context,
     required List flujoAcciones,
@@ -193,13 +196,24 @@ class EjecutorFlujosSdui {
 
       if (accion == 'LLAMAR_RPC_NANO') {
         final String rpc = paso['rpc']?.toString() ?? 'nano_transaccion_atomica';
-        final Map params = paso['parametros'] is Map
-            ? Map.from(paso['parametros'] as Map)
-            : {
-                'p_app_id': PuenteSupabaseSdui.appIdActivo,
-                'p_operacion': paso['operacion']?.toString() ?? 'INSERTAR_DOCUMENTO',
-                'p_datos': paso['datos'] ?? estado.leerRuta('form') ?? {},
-              };
+        Map params;
+
+        if (paso['parametros'] is Map) {
+          params = Map.from(paso['parametros'] as Map);
+        } else {
+          final Map pDatosFinal = Map.from((estado.leerRuta('form') as Map?) ?? {});
+          // Inyección inteligente de idempotency_key para transacciones seguras
+          if (pDatosFinal['idempotency_key'] == null || pDatosFinal['idempotency_key'].toString().isEmpty) {
+             pDatosFinal['idempotency_key'] = _uidGen.v4();
+          }
+
+          params = {
+            'p_app_id': PuenteSupabaseSdui.appIdActivo,
+            'p_operacion': paso['operacion']?.toString() ?? 'INSERTAR_DOCUMENTO',
+            'p_datos': pDatosFinal,
+          };
+        }
+        
         params.putIfAbsent('p_app_id', () => PuenteSupabaseSdui.appIdActivo);
 
         final Map resRpc = await PuenteSupabaseSdui.llamarRpcNano(
@@ -277,7 +291,8 @@ class EjecutorFlujosSdui {
         }
 
         final String csvTxt = const ListToCsvConverter().convert(filas);
-        final List gzBytes = GZipEncoder().encode(utf8.encode(csvTxt)) ?? [];
+        final List<int>? encodeRes = GZipEncoder().encode(utf8.encode(csvTxt));
+        final List<int> gzBytes = encodeRes ?? <int>[];
         final f = File('${Directory.systemTemp.path}/export_sdui_${DateTime.now().millisecondsSinceEpoch}.csv');
         await f.writeAsString(csvTxt);
         onFeedback?.call('CSV (${filas.length - 1} filas, GZip ${gzBytes.length}B): ${f.path}');
